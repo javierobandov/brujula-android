@@ -46,6 +46,14 @@ class MainActivity : ComponentActivity() {
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
+    var importStatus by remember { mutableStateOf<String?>(null) }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val imported = importCapturedCsv(activity, csv)
+        captured = CapturedEventStore(activity).recent()
+        importStatus = if (imported == 0) "No se encontraron movimientos nuevos en el CSV." else "Se importaron $imported movimientos; quedan pendientes de revisión."
+    }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
@@ -85,6 +93,12 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { exportLauncher.launch("brujula-eventos-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
                         Text("Exportar bandeja CSV")
                     }
+                    OutlinedButton(onClick = {
+                        importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*"))
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Importar respaldo CSV")
+                    }
+                    importStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                     OutlinedButton(onClick = {
                         updateStatus = "Buscando actualización…"
                         updateChecker.check { result ->
@@ -326,6 +340,94 @@ private fun CapturedEvent.categoryLabel() = when (category) {
     "suscripciones" -> "SUSCRIPCIONES"
     "salud" -> "SALUD"
     else -> "OTROS"
+}
+
+private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
+    val rows = parseCsvRows(csv)
+    if (rows.size < 2) return 0
+    val header = rows.first().map { it.trim() }
+    fun indexOf(name: String) = header.indexOf(name)
+    val dateIndex = indexOf("fecha_hora")
+    val statusIndex = indexOf("estado")
+    val typeIndex = indexOf("tipo_movimiento")
+    val categoryIndex = indexOf("categoria")
+    val paymentIndex = indexOf("medio_pago")
+    val merchantIndex = indexOf("comercio")
+    val amountIndex = indexOf("monto")
+    val rawIndex = indexOf("texto_original")
+    if (listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex).any { it < 0 }) return 0
+    val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL"))
+    val store = CapturedEventStore(activity)
+    return rows.drop(1).count { row ->
+        val indexes = listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex)
+        if (row.size <= indexes.max()) return@count false
+        val statusLabel = row[statusIndex]
+        if (statusLabel == "DEMO") return@count false
+        val rawText = row[rawIndex]
+        val merchant = row[merchantIndex].takeIf { it.isNotBlank() }
+        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull()
+        val receivedAt = dateFormat.parse(row[dateIndex])?.time ?: System.currentTimeMillis()
+        store.insertImportedEvent(
+            receivedAt = receivedAt,
+            rawText = rawText,
+            amount = amount,
+            merchant = merchant,
+            movementType = row[typeIndex].toMovementType(),
+            category = row[categoryIndex].toCategory(),
+            paymentSource = row[paymentIndex].toPaymentSource(),
+            status = if (statusLabel == "CONFIRMADO") "confirmed" else "captured"
+        )
+    }
+}
+
+private fun parseCsvRows(csv: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>()
+    val row = mutableListOf<String>()
+    val field = StringBuilder()
+    var quoted = false
+    var index = 0
+    while (index < csv.length) {
+        val char = csv[index]
+        when {
+            char == '"' && quoted && index + 1 < csv.length && csv[index + 1] == '"' -> { field.append('"'); index++ }
+            char == '"' -> quoted = !quoted
+            char == ',' && !quoted -> { row += field.toString(); field.clear() }
+            (char == '
+' || char == '') && !quoted -> {
+                if (char == '' && index + 1 < csv.length && csv[index + 1] == '
+') index++
+                row += field.toString(); field.clear()
+                if (row.any { it.isNotBlank() }) rows += row.toList()
+                row.clear()
+            }
+            else -> field.append(char)
+        }
+        index++
+    }
+    if (field.isNotEmpty() || row.isNotEmpty()) { row += field.toString(); rows += row.toList() }
+    return rows
+}
+
+private fun String.toMovementType() = when (this) {
+    "PAGO_TARJETA" -> "card_payment"
+    "DEVOLUCION" -> "refund"
+    "TRANSFERENCIA" -> "transfer"
+    else -> "expense"
+}
+
+private fun String.toCategory() = when (this) {
+    "ALIMENTACION" -> "alimentacion"
+    "TRANSPORTE" -> "transporte"
+    "SUSCRIPCIONES" -> "suscripciones"
+    "SALUD" -> "salud"
+    else -> "otros"
+}
+
+private fun String.toPaymentSource() = when (this) {
+    "TARJETA" -> "tarjeta_credito"
+    "CUENTA_CORRIENTE" -> "cuenta_corriente"
+    "MANUAL" -> "manual"
+    else -> "notificacion"
 }
 
 private fun csvCell(value: String): String = "\"${value.replace("\"", "\"\"")}\""
