@@ -47,7 +47,7 @@ La app debe guardar sólo la sesión de Firebase, nunca credenciales bancarias. 
 
 ## Estado de la integración
 
-La app ya contiene un adaptador opcional de Firebase y una acción de sincronización por lotes de 450 eventos. Sin configuración, la acción informa que sigue en modo local y no altera los datos. La app usa una cuenta persistente de Firebase Authentication con correo y contraseña. La contraseña sólo la procesa Firebase Authentication; Brújula no la almacena ni la envía a un servidor propio. Si no hay sesión iniciada, la app conserva el modo local y no intenta sincronizar.
+La app ya contiene un adaptador opcional de Firebase y una acción de sincronización bidireccional por lotes de 450 eventos. Sin configuración, la acción informa que sigue en modo local y no altera los datos. La app usa una cuenta persistente de Firebase Authentication con correo y contraseña. La contraseña sólo la procesa Firebase Authentication; Brújula no la almacena ni la envía a un servidor propio. Si no hay sesión iniciada, la app conserva el modo local y no intenta sincronizar.
 
 ## Orden de implementación
 
@@ -57,7 +57,7 @@ La app ya contiene un adaptador opcional de Firebase y una acción de sincroniza
 4. Añadir Firebase BoM, Authentication y Firestore.
 5. Activar el proveedor Email/Password en Firebase Authentication.
 6. Crear o iniciar sesión desde la pantalla de cuenta cloud; Firebase mantiene la sesión segura en el dispositivo.
-7. Sincronizar por fingerprint desde el paquete JSON ya implementado.
+7. Sincronizar en ambos sentidos por fingerprint desde el paquete JSON ya implementado; la recuperación remota conserva los datos locales existentes mediante inserción idempotente.
 8. Descargar cambios remotos por cursor y aplicar conflictos con precedencia de fuente.
 9. Probar restauración en un segundo dispositivo.
 10. Publicar una release sólo después de validar reglas y recuperación.
