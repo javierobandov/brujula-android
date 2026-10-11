@@ -102,6 +102,12 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Insertar evento de prueba")
                     }
+                    OutlinedButton(onClick = {
+                        CapturedEventStore(activity).insertClassificationDemoEvents()
+                        captured = CapturedEventStore(activity).recent()
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Probar clasificación de movimientos")
+                    }
                     Text("La app sólo guardará notificaciones filtradas de movimientos; no usa credenciales bancarias.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
                 item {
