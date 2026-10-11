@@ -60,6 +60,17 @@ class CapturedEventStore(context: Context) {
         }.count { it }
     }
 
+    fun updateCategory(id: Long, category: String): Int {
+        val values = ContentValues().apply {
+            put("category", category)
+            put("category_manual", 1)
+        }
+        return helper.writableDatabase.update("events", values, "id = ?", arrayOf(id.toString()))
+    }
+
+    fun deleteDemoEvents(): Int =
+        helper.writableDatabase.delete("events", "status = ?", arrayOf("demo"))
+
     fun recent(limit: Int = 30): List<CapturedEvent> {
         val db = helper.readableDatabase
         val result = mutableListOf<CapturedEvent>()
@@ -81,7 +92,7 @@ class CapturedEventStore(context: Context) {
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 4) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 5) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -94,6 +105,7 @@ class CapturedEventStore(context: Context) {
                     merchant TEXT,
                     movement_type TEXT NOT NULL DEFAULT 'expense',
                     category TEXT NOT NULL DEFAULT 'otros',
+                    category_manual INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL
                 )""".trimIndent()
             )
@@ -134,6 +146,10 @@ class CapturedEventStore(context: Context) {
                         db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
                     }
                 }
+            }
+            }
+            if (oldVersion < 5) {
+                db.execSQL("ALTER TABLE events ADD COLUMN category_manual INTEGER NOT NULL DEFAULT 0")
             }
         }
     }
