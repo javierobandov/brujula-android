@@ -14,6 +14,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
@@ -149,7 +160,7 @@ class MainActivity : ComponentActivity() {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("BRÚJULA", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                         Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
-                            Text("♙", color = Green, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                            Icon(Icons.Filled.Person, contentDescription = "Cuenta", tint = Green, modifier = Modifier.padding(10.dp).size(26.dp))
                         }
                     }
                 }
@@ -185,9 +196,9 @@ class MainActivity : ComponentActivity() {
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric("▣", "Presupuesto", clp(monthlyBudget), Ink, Modifier.weight(1f))
-                        SummaryMetric("✓", "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
-                        SummaryMetric("▤", "Por revisar", pendingReconciliation.toString(), Color(0xFF9A6500), Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Presupuesto", clp(monthlyBudget), Ink, Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), Color(0xFF9A6500), Modifier.weight(1f))
                     }
                 }
                 item {
@@ -429,9 +440,9 @@ class MainActivity : ComponentActivity() {
                         onClick = { selectedTab = tab },
                         icon = {
                             Text(
-                                when (tab) { 0 -> "⌂"; 1 -> "☷"; 3 -> "▥"; else -> "♙" },
-                                fontSize = 21.sp,
-                                color = if (selectedTab == tab) Green else Color.Gray
+                                imageVector = when (tab) { 0 -> Icons.Filled.Home; 1 -> Icons.Filled.List; 3 -> Icons.Filled.BarChart; else -> Icons.Filled.Person },
+                                contentDescription = label,
+                                tint = if (selectedTab == tab) Green else Color.Gray
                             )
                         },
                         label = { Text(label, fontSize = 11.sp) }
@@ -716,11 +727,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun SummaryMetric(icon: String, label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
+@Composable private fun SummaryMetric(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
     Card(modifier = modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
-                Text(icon, color = Green, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.padding(7.dp).size(20.dp))
             }
             Text(label, color = Color.Gray, fontSize = 11.sp, maxLines = 1)
             Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -731,7 +742,12 @@ class MainActivity : ComponentActivity() {
 @Composable private fun SummaryMovementRow(event: CapturedEvent) {
     Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
-            Text("$", color = Green, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            Icon(
+                imageVector = when (event.category) { "supermercado" -> Icons.Filled.ShoppingCart; "auto" -> Icons.Filled.DirectionsCar; "suscripciones" -> Icons.Filled.PlayArrow; else -> Icons.Filled.Description },
+                contentDescription = null,
+                tint = Green,
+                modifier = Modifier.padding(10.dp).size(20.dp)
+            )
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
@@ -758,3 +774,259 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+                if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
+                TextButton(onClick = onEditCategory) { Text("Cambiar categoría") }
+            }
+        }
+    }
+}
+
+
+private class BudgetSettings(context: Context) {
+    private val preferences = context.getSharedPreferences("brujula_settings", Context.MODE_PRIVATE)
+
+    fun monthlyBudget(): Int = preferences.getInt("monthly_budget", 1_000_000)
+
+    fun setMonthlyBudget(value: Int) {
+        preferences.edit().putInt("monthly_budget", value).apply()
+    }
+}
+private fun clp(amount: Int) = NumberFormat.getCurrencyInstance(Locale("es", "CL")).apply { maximumFractionDigits = 0 }.format(amount)
+private fun percent(amount: Int, budget: Int) = (amount.toFloat() / budget.coerceAtLeast(1) * 100).toInt()
+private fun CapturedEvent.statusLabel() = when (status) {
+    "demo" -> "DEMO"
+    "confirmed" -> "CONFIRMADO"
+    "reconciled" -> "CONCILIADO"
+    "requires_review" -> "REQUIERE_REVISION"
+    else -> "CAPTURADO"
+}
+private fun CapturedEvent.receivedAtLabel() = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL")).format(Date(receivedAt))
+private fun CapturedEvent.receivedAtShortLabel() = SimpleDateFormat("dd MMM, HH:mm", Locale("es", "CL")).format(Date(receivedAt))
+private fun Long.isCurrentMonth(): Boolean {
+    val event = Calendar.getInstance().apply { timeInMillis = this@isCurrentMonth }
+    val now = Calendar.getInstance()
+    return event.get(Calendar.YEAR) == now.get(Calendar.YEAR) && event.get(Calendar.MONTH) == now.get(Calendar.MONTH)
+}
+
+
+private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
+    put("schema_version", 1)
+    put("generated_at", System.currentTimeMillis())
+    put("events", JSONArray().apply {
+        events.forEach { event ->
+            put(JSONObject().apply {
+                put("fingerprint", event.fingerprint)
+                put("received_at", event.receivedAt)
+                put("source_package", event.sourcePackage)
+                put("raw_text", event.rawText)
+                put("amount", event.amount ?: JSONObject.NULL)
+                put("merchant", event.merchant ?: JSONObject.NULL)
+                put("movement_type", event.movementType)
+                put("category", event.category)
+                put("payment_source", event.paymentSource)
+                put("status", event.status)
+            })
+        }
+    })
+    planning?.let { put("planning", it) }
+}.toString(2)
+
+private fun importSyncBundle(activity: MainActivity, json: String): Int {
+    val root = runCatching { JSONObject(json) }.getOrNull() ?: return 0
+    if (root.optInt("schema_version", -1) != 1) return 0
+    val events = root.optJSONArray("events") ?: return 0
+    val store = CapturedEventStore(activity)
+    val importedEvents = (0 until events.length()).count { index ->
+        val event = events.optJSONObject(index) ?: return@count false
+        val fingerprint = event.optString("fingerprint").takeIf { it.isNotBlank() } ?: return@count false
+        val status = event.optString("status", "captured")
+        if (status == "demo" || status == "ignored") return@count false
+        store.insertSyncEvent(
+            fingerprint = fingerprint,
+            receivedAt = event.optLong("received_at", System.currentTimeMillis()),
+            sourcePackage = event.optString("source_package", "cl.brujula.app.sync"),
+            rawText = event.optString("raw_text"),
+            amount = if (event.isNull("amount")) null else event.optInt("amount"),
+            merchant = if (event.isNull("merchant")) null else event.optString("merchant"),
+            movementType = event.optString("movement_type", "expense"),
+            category = event.optString("category", "otros"),
+            paymentSource = event.optString("payment_source", "notificacion"),
+            status = status
+        )
+    }
+    PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
+    return importedEvents
+}
+private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
+    appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
+    events.forEach { event ->
+        appendLine(listOf(
+            event.receivedAtLabel(),
+            event.statusLabel(),
+            event.movementTypeLabel(),
+            event.categoryLabel(),
+            event.paymentSourceLabel(),
+            event.merchant.orEmpty(),
+            event.amount?.toString().orEmpty(),
+            event.sourcePackage,
+            event.rawText
+        ).joinToString(",") { csvCell(it) })
+    }
+}
+
+private fun CapturedEvent.movementTypeLabel() = when (movementType) {
+    "card_payment" -> "PAGO_TARJETA"
+    "refund" -> "DEVOLUCION"
+    "transfer" -> "TRANSFERENCIA"
+    else -> "GASTO"
+}
+
+
+private fun CapturedEvent.paymentSourceLabel() = when (paymentSource) {
+    "tarjeta_credito" -> "TARJETA"
+    "cuenta_corriente" -> "CUENTA_CORRIENTE"
+    "manual" -> "MANUAL"
+    else -> "NOTIFICACION"
+}
+
+private fun parseClpInput(value: String): Int? =
+    value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
+
+private fun CapturedEvent.categoryLabel() = when (category) {
+    "servicios" -> "SERVICIOS"
+    "casa" -> "CASA"
+    "supermercado" -> "SUPERMERCADO"
+    "salidas" -> "SALIDAS"
+    "auto" -> "AUTO"
+    "alimentacion" -> "SUPERMERCADO"
+    "transporte" -> "SALIDAS"
+    "suscripciones" -> "SERVICIOS"
+    "salud" -> "CASA"
+    else -> "OTROS"
+}
+
+private fun importStatementCsv(activity: MainActivity, csv: String): Int {
+    val rows = parseCsvRows(csv)
+    if (rows.size < 2) return 0
+    val header = rows.first().map { it.trim().lowercase(Locale.ROOT) }
+    fun indexOf(names: List<String>) = header.indexOfFirst { value -> names.any { name -> value.contains(name) } }
+    val dateIndex = indexOf(listOf("fecha"))
+    val merchantIndex = indexOf(listOf("comercio", "descrip", "detalle", "glosa", "concepto", "merchant"))
+    val amountIndex = indexOf(listOf("monto", "amount", "cargo", "debe", "debit"))
+    if (dateIndex < 0 || merchantIndex < 0 || amountIndex < 0) return 0
+    val store = CapturedEventStore(activity)
+    return rows.drop(1).count { row ->
+        if (row.size <= maxOf(dateIndex, merchantIndex, amountIndex)) return@count false
+        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull() ?: return@count false
+        if (amount <= 0) return@count false
+        val merchant = row[merchantIndex].trim()
+        if (merchant.isBlank()) return@count false
+        val receivedAt = parseStatementDate(row[dateIndex]) ?: System.currentTimeMillis()
+        store.insertStatementEvent(
+            receivedAt = receivedAt,
+            rawText = row.joinToString(" | "),
+            amount = amount,
+            merchant = merchant
+        )
+    }
+}
+
+private fun parseStatementDate(value: String): Long? {
+    val patterns = listOf("dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss")
+    return patterns.firstNotNullOfOrNull { pattern ->
+        runCatching { SimpleDateFormat(pattern, Locale("es", "CL")).parse(value.trim())?.time }.getOrNull()
+    }
+}
+
+private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
+    val rows = parseCsvRows(csv)
+    if (rows.size < 2) return 0
+    val header = rows.first().map { it.trim() }
+    fun indexOf(name: String) = header.indexOf(name)
+    val dateIndex = indexOf("fecha_hora")
+    val statusIndex = indexOf("estado")
+    val typeIndex = indexOf("tipo_movimiento")
+    val categoryIndex = indexOf("categoria")
+    val paymentIndex = indexOf("medio_pago")
+    val merchantIndex = indexOf("comercio")
+    val amountIndex = indexOf("monto")
+    val rawIndex = indexOf("texto_original")
+    if (listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex).any { it < 0 }) return 0
+    val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL"))
+    val store = CapturedEventStore(activity)
+    return rows.drop(1).count { row ->
+        val indexes = listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex)
+        if (row.size <= indexes.max()) return@count false
+        val statusLabel = row[statusIndex]
+        if (statusLabel == "DEMO") return@count false
+        val rawText = row[rawIndex]
+        val merchant = row[merchantIndex].takeIf { it.isNotBlank() }
+        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull()
+        val receivedAt = dateFormat.parse(row[dateIndex])?.time ?: System.currentTimeMillis()
+        store.insertImportedEvent(
+            receivedAt = receivedAt,
+            rawText = rawText,
+            amount = amount,
+            merchant = merchant,
+            movementType = row[typeIndex].toMovementType(),
+            category = row[categoryIndex].toCategory(),
+            paymentSource = row[paymentIndex].toPaymentSource(),
+            status = when (statusLabel) {
+                "CONFIRMADO" -> "confirmed"
+                "CONCILIADO" -> "reconciled"
+                "REQUIERE_REVISION" -> "requires_review"
+                else -> "captured"
+            }
+        )
+    }
+}
+
+private fun parseCsvRows(csv: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>()
+    val row = mutableListOf<String>()
+    val field = StringBuilder()
+    var quoted = false
+    var index = 0
+    while (index < csv.length) {
+        val char = csv[index]
+        when {
+            char.code == 34 && quoted && index + 1 < csv.length && csv[index + 1].code == 34 -> { field.append(char); index++ }
+            char.code == 34 -> quoted = !quoted
+            char.code == 44 && !quoted -> { row += field.toString(); field.clear() }
+            (char.code == 10 || char.code == 13) && !quoted -> {
+                if (char.code == 13 && index + 1 < csv.length && csv[index + 1].code == 10) index++
+                row += field.toString(); field.clear()
+                if (row.any { it.isNotBlank() }) rows += row.toList()
+                row.clear()
+            }
+            else -> field.append(char)
+        }
+        index++
+    }
+    if (field.isNotEmpty() || row.isNotEmpty()) { row += field.toString(); rows += row.toList() }
+    return rows
+}
+
+private fun String.toMovementType() = when (this) {
+    "PAGO_TARJETA" -> "card_payment"
+    "DEVOLUCION" -> "refund"
+    "TRANSFERENCIA" -> "transfer"
+    else -> "expense"
+}
+
+private fun String.toCategory() = when (this) {
+    "ALIMENTACION" -> "alimentacion"
+    "TRANSPORTE" -> "transporte"
+    "SUSCRIPCIONES" -> "suscripciones"
+    "SALUD" -> "salud"
+    else -> "otros"
+}
+
+private fun String.toPaymentSource() = when (this) {
+    "TARJETA" -> "tarjeta_credito"
+    "CUENTA_CORRIENTE" -> "cuenta_corriente"
+    "MANUAL" -> "manual"
+    else -> "notificacion"
+}
+
+private fun csvCell(value: String): String = "\"${value.replace("\"", "\"\"")}\""
