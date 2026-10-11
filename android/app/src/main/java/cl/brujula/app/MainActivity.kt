@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     val updateChecker = remember { UpdateChecker(activity) }
+    val firebaseSync = remember { FirebaseCloudSync(activity) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
@@ -158,6 +159,12 @@ class MainActivity : ComponentActivity() {
                         Text("Importar paquete de sincronización")
                     }
                     syncStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                    OutlinedButton(onClick = {
+                        syncStatus = "Sincronizando…"
+                        firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result -> syncStatus = result }
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Sincronizar con la nube")
+                    }
                     OutlinedButton(onClick = {
                         importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*"))
                     }, modifier = Modifier.fillMaxWidth()) {
