@@ -1,0 +1,15 @@
+.env
+data/
+__pycache__/
+*.pyc
+
+# Android/Gradle local toolchain and generated outputs
+.toolchain/
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+
+# Local release signing material
+*.jks
+*.keystore
