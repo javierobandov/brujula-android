@@ -1,0 +1,25 @@
+name: Project validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Excel parser dependency
+        run: python -m pip install --disable-pip-version-check openpyxl
+      - name: Validate Firestore rules guardrails
+        run: python tools/validate_rules.py
+      - name: Test Excel import contract
+        working-directory: tools
+        run: python test_excel_to_brujula.py
