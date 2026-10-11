@@ -29,3 +29,7 @@ El workflow requiere configurar en GitHub Actions:
 - `BRUJULA_KEY_PASSWORD`
 
 La clave de firma debe respaldarse fuera del repositorio. Una instalación debug existente requiere una migración única antes de instalar la primera versión release firmada.
+
+## Sincronización
+
+La app puede exportar e importar un paquete JSON versionado e idempotente para preparar la futura sincronización cloud privada. El contrato está documentado en [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md). La app todavía no sube datos automáticamente ni usa credenciales bancarias.
