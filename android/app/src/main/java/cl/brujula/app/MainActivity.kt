@@ -2,6 +2,7 @@ package cl.brujula.app
 
 import android.os.Bundle
 import android.content.Intent
+import android.content.Context
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +49,8 @@ class MainActivity : ComponentActivity() {
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
+    var monthlyBudget by remember { mutableStateOf(BudgetSettings(activity).monthlyBudget()) }
+    var showBudgetDialog by remember { mutableStateOf(false) }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -97,7 +100,7 @@ class MainActivity : ComponentActivity() {
                 item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Captura local en prueba · sin sincronización bancaria", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
                 item {
                     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total / 1_000_000f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total)}% del presupuesto utilizado", color = Green, fontSize = 12.sp); Text("Conciliación: $reconciledCount conciliados · $pendingReconciliation por revisar", color = if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
+                        Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total, monthlyBudget)}% del presupuesto utilizado", color = Green, fontSize = 12.sp); Text("Presupuesto mensual: ${clp(monthlyBudget)}", color = Color.Gray, fontSize = 12.sp); Text("Conciliación: $reconciledCount conciliados · $pendingReconciliation por revisar", color = if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
                     }
                 }
                 item {
@@ -134,6 +137,9 @@ class MainActivity : ComponentActivity() {
                     updateStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                 }
                 item {
+                    OutlinedButton(onClick = { showBudgetDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Configurar presupuesto mensual")
+                    }
                     OutlinedButton(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Agregar gasto manual")
                     }
@@ -261,6 +267,39 @@ class MainActivity : ComponentActivity() {
                 dismissButton = { TextButton(onClick = { showManualDialog = false }) { Text("Cancelar") } }
             )
         }
+        if (showBudgetDialog) {
+            var budgetInput by remember { mutableStateOf(monthlyBudget.toString()) }
+            var budgetError by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showBudgetDialog = false },
+                title = { Text("Presupuesto mensual") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = budgetInput,
+                            onValueChange = { budgetInput = it },
+                            label = { Text("Monto en pesos") },
+                            singleLine = true
+                        )
+                        Text("Se usa sólo para calcular el porcentaje del mes actual.", color = Color.Gray, fontSize = 12.sp)
+                        budgetError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = parseClpInput(budgetInput)
+                        if (value == null || value <= 0) {
+                            budgetError = "Ingresa un presupuesto mayor que cero."
+                        } else {
+                            BudgetSettings(activity).setMonthlyBudget(value)
+                            monthlyBudget = value
+                            showBudgetDialog = false
+                        }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showBudgetDialog = false }) { Text("Cancelar") } }
+            )
+        }
         editingEvent?.let { event ->
             AlertDialog(
                 onDismissRequest = { editingEvent = null },
@@ -308,8 +347,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+private class BudgetSettings(context: Context) {
+    private val preferences = context.getSharedPreferences("brujula_settings", Context.MODE_PRIVATE)
+
+    fun monthlyBudget(): Int = preferences.getInt("monthly_budget", 1_000_000)
+
+    fun setMonthlyBudget(value: Int) {
+        preferences.edit().putInt("monthly_budget", value).apply()
+    }
+}
 private fun clp(amount: Int) = NumberFormat.getCurrencyInstance(Locale("es", "CL")).apply { maximumFractionDigits = 0 }.format(amount)
-private fun percent(amount: Int) = (amount / 1_000_000f * 100).toInt()
+private fun percent(amount: Int, budget: Int) = (amount.toFloat() / budget.coerceAtLeast(1) * 100).toInt()
 private fun CapturedEvent.statusLabel() = when (status) {
     "demo" -> "DEMO"
     "confirmed" -> "CONFIRMADO"
