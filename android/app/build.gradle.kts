@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 val firebaseApiKey = providers.gradleProperty("BRUJULA_FIREBASE_API_KEY").orNull ?: System.getenv("BRUJULA_FIREBASE_API_KEY") ?: ""
 val firebaseAppId = providers.gradleProperty("BRUJULA_FIREBASE_APP_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_APP_ID") ?: ""
 val firebaseProjectId = providers.gradleProperty("BRUJULA_FIREBASE_PROJECT_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_PROJECT_ID") ?: ""
@@ -49,7 +51,7 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(JvmTarget.JVM_17)\n    }
 }
 
 dependencies {
