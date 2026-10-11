@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     val updateChecker = remember { UpdateChecker(activity) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
+    var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
@@ -108,6 +109,12 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Probar clasificación de movimientos")
                     }
+                    OutlinedButton(onClick = {
+                        CapturedEventStore(activity).deleteDemoEvents()
+                        captured = CapturedEventStore(activity).recent()
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Limpiar eventos DEMO")
+                    }
                     Text("La app sólo guardará notificaciones filtradas de movimientos; no usa credenciales bancarias.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
                 item {
@@ -125,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 if (realCaptured.isEmpty()) {
                     item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Color.Gray, fontSize = 13.sp) }
                 } else {
-                    items(realCaptured) { event -> CapturedExpenseRow(event) }
+                    items(realCaptured) { event -> CapturedExpenseRow(event) { editingEvent = event } }
                 }
             }
         }
@@ -142,11 +149,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun CapturedExpenseRow(event: CapturedEvent) {
+@Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
-            Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onEditCategory) { Text("Cambiar categoría") }
+            }
         }
     }
 }
@@ -175,6 +185,27 @@ private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
             event.sourcePackage,
             event.rawText
         ).joinToString(",") { csvCell(it) })
+        editingEvent?.let { event ->
+            AlertDialog(
+                onDismissRequest = { editingEvent = null },
+                title = { Text("Categoría del movimiento") },
+                text = {
+                    Column {
+                        listOf("alimentacion", "transporte", "suscripciones", "salud", "otros").forEach { category ->
+                            TextButton(onClick = {
+                                CapturedEventStore(activity).updateCategory(event.id, category)
+                                captured = CapturedEventStore(activity).recent()
+                                editingEvent = null
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(category.replaceFirstChar { it.uppercase() })
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
+            )
+        }
+
     }
 }
 
