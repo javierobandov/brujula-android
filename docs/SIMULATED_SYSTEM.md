@@ -49,3 +49,7 @@ ChatGPT no debe:
 3. **API de ChatGPT:** opcional para automatizar consultas desde un backend. No se considera parte del modo gratuito porque puede generar costos y requiere gestionar una API key.
 
 El modo simulado valida la modalidad 1 y genera el paquete de entrada de la modalidad 2.
+
+## Implementación en la app
+
+En `Cuenta` existe la acción **Consultar resumen con ChatGPT**. Abre el selector de compartir del teléfono con un informe construido desde montos, comercios, categorías y estados resumidos. La acción no incluye `raw_text`, credenciales, números de tarjeta ni tokens; tampoco ejecuta cambios automáticamente.
