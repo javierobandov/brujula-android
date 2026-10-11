@@ -7,7 +7,7 @@ Aplicación Android local-first para capturar gastos de Scotiabank mediante noti
 - `android/`: aplicación Android.
 - `.github/workflows/android-release.yml`: compilación y publicación de APK por etiquetas `v*`.
 
-La app guarda la evidencia localmente y permite exportarla a CSV. El flujo de captura no depende de que exista un computador encendido.
+La app guarda la evidencia localmente, permite exportarla a CSV y admite gastos manuales para movimientos sin notificación. El flujo de captura no depende de que exista un computador encendido.
 
 ## Compilar localmente
 
