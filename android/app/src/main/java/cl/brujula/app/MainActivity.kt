@@ -147,10 +147,51 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (selectedTab == 0) {
-                item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Privado en tu teléfono · nube opcional", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("BRÚJULA", color = Green, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                            Text("Octubre 2026", color = Color.Gray, fontSize = 13.sp)
+                        }
+                        Text("●", color = Green, fontSize = 26.sp)
+                    }
+                }
                 item {
                     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total, monthlyBudget)}% del presupuesto utilizado", color = Green, fontSize = 12.sp); Text("Presupuesto mensual: ${clp(monthlyBudget)}", color = Color.Gray, fontSize = 12.sp); Text("Conciliación: $reconciledCount conciliados · $pendingReconciliation por revisar", color = if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
+                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Gasto del mes", color = Color.Gray, fontSize = 14.sp)
+                            Text(clp(total), color = Ink, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                            LinearProgressIndicator(progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE1ECE7))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("${percent(total, monthlyBudget)}% del presupuesto", color = Green, fontSize = 13.sp)
+                                Text("Disponible ${clp((monthlyBudget - total).coerceAtLeast(0))}", color = Color.Gray, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SummaryMetric("Por revisar", pendingReconciliation.toString(), Color(0xFF9A6500), Modifier.weight(1f))
+                        SummaryMetric("Conciliados", reconciledCount.toString(), Green, Modifier.weight(1f))
+                        SummaryMetric("Compromisos", clp(plannedCommitmentTotal), Ink, Modifier.weight(1f))
+                    }
+                }
+                item {
+                    Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                        Text("＋  Agregar gasto", fontSize = 16.sp)
+                    }
+                }
+                item {
+                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Últimos movimientos", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            val recentSummary = monthExpenses.sortedByDescending { it.receivedAt }.take(3)
+                            if (recentSummary.isEmpty()) {
+                                Text("Tus gastos reales aparecerán aquí.", color = Color.Gray, fontSize = 13.sp)
+                            } else {
+                                recentSummary.forEach { event -> SummaryMovementRow(event) }
+                            }
+                        }
                     }
                 }
                 item {
@@ -712,6 +753,28 @@ class MainActivity : ComponentActivity() {
             }
             TextButton(onClick = onDelete) { Text("Quitar") }
         }
+    }
+}
+
+@Composable private fun SummaryMetric(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
+    Card(modifier = modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, color = Color.Gray, fontSize = 11.sp)
+            Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+    }
+}
+
+@Composable private fun SummaryMovementRow(event: CapturedEvent) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
+            Text("•", color = Green, fontSize = 22.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
+            Text("${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp)
+        }
+        Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
     }
 }
 
