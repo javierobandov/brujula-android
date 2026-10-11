@@ -16,6 +16,7 @@ data class CapturedEvent(
     val merchant: String?,
     val movementType: String,
     val category: String,
+    val paymentSource: String,
     val status: String
 )
 
@@ -34,6 +35,7 @@ class CapturedEventStore(context: Context) {
             put("merchant", parseMerchant(rawText))
             put("movement_type", classifyMovement(rawText))
             put("category", classifyCategory(rawText))
+            put("payment_source", classifyPaymentSource(rawText))
             put("status", status)
         }
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
@@ -58,6 +60,31 @@ class CapturedEventStore(context: Context) {
         return samples.mapIndexed { index, text ->
             insertIfNew("cl.brujula.app.demo", text, receivedAt + index * 60_000L, status = "demo")
         }.count { it }
+    }
+
+    fun insertManualExpense(
+        merchant: String,
+        amount: Int,
+        category: String,
+        paymentSource: String,
+        receivedAt: Long = System.currentTimeMillis()
+    ): Boolean {
+        val db = helper.writableDatabase
+        val rawText = "MANUAL · $merchant · $amount · $paymentSource"
+        val values = ContentValues().apply {
+            put("fingerprint", sha256("manual|$merchant|$amount|$receivedAt"))
+            put("received_at", receivedAt)
+            put("source_package", "cl.brujula.app.manual")
+            put("raw_text", rawText)
+            put("amount", amount)
+            put("merchant", merchant.trim())
+            put("movement_type", "expense")
+            put("category", category)
+            put("category_manual", 1)
+            put("payment_source", paymentSource)
+            put("status", "captured")
+        }
+        return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
 
     fun updateCategory(id: Long, category: String): Int {
@@ -85,6 +112,7 @@ class CapturedEventStore(context: Context) {
                     merchant = cursor.getStringOrNull("merchant"),
                     movementType = cursor.getStringOrNull("movement_type") ?: "expense",
                     category = cursor.getStringOrNull("category") ?: "otros",
+                    paymentSource = cursor.getStringOrNull("payment_source") ?: "notificacion",
                     status = cursor.getString(cursor.getColumnIndexOrThrow("status"))
                 )
             }
@@ -92,7 +120,7 @@ class CapturedEventStore(context: Context) {
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 5) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 6) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -106,6 +134,7 @@ class CapturedEventStore(context: Context) {
                     movement_type TEXT NOT NULL DEFAULT 'expense',
                     category TEXT NOT NULL DEFAULT 'otros',
                     category_manual INTEGER NOT NULL DEFAULT 0,
+                    payment_source TEXT NOT NULL DEFAULT 'notificacion',
                     status TEXT NOT NULL
                 )""".trimIndent()
             )
@@ -149,6 +178,17 @@ class CapturedEventStore(context: Context) {
             }
             if (oldVersion < 5) {
                 db.execSQL("ALTER TABLE events ADD COLUMN category_manual INTEGER NOT NULL DEFAULT 0")
+            }
+            if (oldVersion < 6) {
+                db.execSQL("ALTER TABLE events ADD COLUMN payment_source TEXT NOT NULL DEFAULT 'notificacion'")
+                db.query("events", arrayOf("id", "raw_text"), null, null, null, null, null).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val values = ContentValues().apply {
+                            put("payment_source", classifyPaymentSource(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
+                        }
+                        db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
+                    }
+                }
             }
         }
     }
@@ -202,6 +242,16 @@ private fun classifyCategory(text: String): String {
         listOf("netflix", "spotify", "youtube", "suscripcion", "suscripción").any(normalized::contains) -> "suscripciones"
         listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica").any(normalized::contains) -> "salud"
         else -> "otros"
+    }
+}
+
+private fun classifyPaymentSource(text: String): String {
+    val normalized = text.lowercase(Locale.ROOT)
+    return when {
+        listOf("tarjeta de crédito", "tarjeta de credito", "tarjeta", "tc").any(normalized::contains) -> "tarjeta_credito"
+        listOf("cuenta corriente", "cuenta corriente", "cuenta").any(normalized::contains) -> "cuenta_corriente"
+        normalized.startsWith("manual") -> "manual"
+        else -> "notificacion"
     }
 }
 
