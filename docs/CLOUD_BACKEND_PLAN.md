@@ -45,6 +45,10 @@ Las reglas deben impedir:
 
 La app debe guardar sólo la sesión de Firebase, nunca credenciales bancarias. La configuración pública de Firebase no es un secreto, pero las reglas sí deben tratarse como una barrera de seguridad.
 
+## Estado de la integración
+
+La app ya contiene un adaptador opcional de Firebase y una acción de sincronización por lotes de 450 eventos. Sin configuración, la acción informa que sigue en modo local y no altera los datos. La primera prueba técnica usa identidad anónima; antes de considerarla recuperación entre teléfonos se debe migrar a correo/contraseña o a otra identidad persistente.
+
 ## Orden de implementación
 
 1. Crear el proyecto Firebase del usuario en Spark.
