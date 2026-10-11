@@ -115,6 +115,83 @@ class CapturedEventStore(context: Context) {
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
 
+    fun insertStatementEvent(
+        receivedAt: Long,
+        rawText: String,
+        amount: Int,
+        merchant: String
+    ): Boolean {
+        val db = helper.writableDatabase
+        val fingerprint = sha256("statement|$receivedAt|$rawText|$amount|$merchant")
+        val values = ContentValues().apply {
+            put("fingerprint", fingerprint)
+            put("received_at", receivedAt)
+            put("source_package", "cl.brujula.app.statement")
+            put("raw_text", rawText)
+            put("amount", amount)
+            put("merchant", merchant.trim())
+            put("movement_type", "expense")
+            put("category", classifyCategory(merchant))
+            put("category_manual", 0)
+            put("payment_source", "cartola")
+            put("status", "requires_review")
+        }
+        return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+
+    fun reconcileStatements(): Int {
+        val db = helper.writableDatabase
+        val statementIds = mutableListOf<Long>()
+        val statements = mutableListOf<Triple<Long, Long, String>>()
+        db.query(
+            "events",
+            arrayOf("id", "received_at", "amount", "merchant"),
+            "source_package = ? AND status = ?",
+            arrayOf("cl.brujula.app.statement", "requires_review"),
+            null, null, "received_at ASC"
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val amountIndex = cursor.getColumnIndexOrThrow("amount")
+                val merchantIndex = cursor.getColumnIndexOrThrow("merchant")
+                if (!cursor.isNull(amountIndex) && !cursor.isNull(merchantIndex)) {
+                    statements += Triple(
+                        cursor.getLong(cursor.getColumnIndexOrThrow("id")),
+                        cursor.getLong(cursor.getColumnIndexOrThrow("received_at")),
+                        cursor.getInt(amountIndex).toString() + "|" + cursor.getString(merchantIndex)
+                    )
+                }
+            }
+        }
+        var reconciled = 0
+        statements.forEach { (statementId, statementDate, key) ->
+            val separator = key.indexOf('|')
+            val amount = key.substring(0, separator).toIntOrNull() ?: return@forEach
+            val merchant = key.substring(separator + 1)
+            var matchedId: Long? = null
+            db.query(
+                "events",
+                arrayOf("id", "received_at", "merchant"),
+                "status IN (?, ?) AND amount = ? AND source_package != ?",
+                arrayOf("captured", "confirmed", amount.toString(), "cl.brujula.app.statement"),
+                null, null, "received_at ASC"
+            ).use { cursor ->
+                while (cursor.moveToNext() && matchedId == null) {
+                    val candidateMerchant = cursor.getStringOrNull("merchant").orEmpty()
+                    val days = kotlin.math.abs(cursor.getLong(cursor.getColumnIndexOrThrow("received_at")) - statementDate) / 86_400_000L
+                    if (days <= 7 && merchantsOverlap(merchant, candidateMerchant)) {
+                        matchedId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                    }
+                }
+            }
+            matchedId?.let { eventId ->
+                db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(eventId.toString()))
+                db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(statementId.toString()))
+                reconciled++
+            }
+        }
+        return reconciled
+    }
+
     fun updateCategory(id: Long, category: String): Int {
         val values = ContentValues().apply {
             put("category", category)
