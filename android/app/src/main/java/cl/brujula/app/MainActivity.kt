@@ -87,6 +87,8 @@ class MainActivity : ComponentActivity() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null }
+    val pendingReconciliation = captured.count { it.status == "requires_review" }
+    val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val total = expenses.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
@@ -95,7 +97,7 @@ class MainActivity : ComponentActivity() {
                 item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Captura local en prueba · sin sincronización bancaria", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
                 item {
                     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total / 1_000_000f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total)}% del presupuesto utilizado", color = Green, fontSize = 12.sp) }
+                        Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total / 1_000_000f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total)}% del presupuesto utilizado", color = Green, fontSize = 12.sp); Text("Conciliación: $reconciledCount conciliados · $pendingReconciliation por revisar", color = if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
                     }
                 }
                 item {
@@ -167,7 +169,12 @@ class MainActivity : ComponentActivity() {
                 if (captured.isEmpty()) {
                     item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Color.Gray, fontSize = 13.sp) }
                 } else {
-                    items(captured) { event -> CapturedEventRow(event) }
+                    items(captured) { event ->
+                        CapturedEventRow(event) {
+                            CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                            captured = CapturedEventStore(activity).recent()
+                        }
+                    }
                 }
                 item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
                 if (realCaptured.isEmpty()) {
@@ -277,12 +284,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun CapturedEventRow(event: CapturedEvent) {
+@Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6F1))) {
         Column(Modifier.fillMaxWidth().padding(15.dp)) {
             Text(event.merchant ?: "Notificación sin comercio", color = Ink, fontWeight = FontWeight.SemiBold)
             Text(event.rawText, color = Color.Gray, fontSize = 12.sp, maxLines = 3)
             Text("${event.statusLabel()} · ${event.receivedAtLabel()}${event.amount?.let { " · ${clp(it)}" } ?: ""}", color = Green, fontSize = 12.sp)
+            if (event.status == "requires_review") TextButton(onClick = onReview) { Text("Marcar como revisado") }
         }
     }
 }
