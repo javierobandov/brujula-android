@@ -39,6 +39,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable fun BrujulaApp(activity: MainActivity) {
     var syncing by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    val updateChecker = remember { UpdateChecker(activity) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -72,6 +75,21 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { exportLauncher.launch("brujula-eventos-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
                         Text("Exportar bandeja CSV")
                     }
+                    OutlinedButton(onClick = {
+                        updateStatus = "Buscando actualización…"
+                        updateChecker.check { result ->
+                            result.onSuccess { update ->
+                                availableUpdate = update
+                                updateStatus = if (update == null || update.version == BuildConfig.VERSION_NAME) "Ya tienes la última versión." else "Disponible Brújula ${update.version}."
+                            }.onFailure { updateStatus = "No se pudo consultar GitHub: ${it.message ?: "error de red"}" }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Buscar actualización") }
+                    if (availableUpdate != null && availableUpdate!!.version != BuildConfig.VERSION_NAME) {
+                        Button(onClick = { updateChecker.downloadAndInstall(availableUpdate!!, onStatus = { updateStatus = it }) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Descargar Brújula ${availableUpdate!!.version}")
+                        }
+                    }
+                    updateStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                 }
                 item {
                     OutlinedButton(onClick = { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.fillMaxWidth()) {
