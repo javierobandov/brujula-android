@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val realCaptured = captured.filter { it.status == "captured" && it.amount != null }
+    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed") && it.amount != null }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val total = expenses.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
@@ -136,7 +136,16 @@ class MainActivity : ComponentActivity() {
                 if (realCaptured.isEmpty()) {
                     item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Color.Gray, fontSize = 13.sp) }
                 } else {
-                    items(realCaptured) { event -> CapturedExpenseRow(event) { editingEvent = event } }
+                    items(realCaptured) { event ->
+                        CapturedExpenseRow(
+                            event = event,
+                            onEditCategory = { editingEvent = event },
+                            onConfirm = {
+                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                captured = CapturedEventStore(activity).recent()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -241,12 +250,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit) {
+@Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onConfirm: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+                if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
                 TextButton(onClick = onEditCategory) { Text("Cambiar categoría") }
             }
         }
@@ -255,7 +265,11 @@ class MainActivity : ComponentActivity() {
 
 private fun clp(amount: Int) = NumberFormat.getCurrencyInstance(Locale("es", "CL")).apply { maximumFractionDigits = 0 }.format(amount)
 private fun percent(amount: Int) = (amount / 1_000_000f * 100).toInt()
-private fun CapturedEvent.statusLabel() = if (status == "demo") "DEMO" else "CAPTURADO"
+private fun CapturedEvent.statusLabel() = when (status) {
+    "demo" -> "DEMO"
+    "confirmed" -> "CONFIRMADO"
+    else -> "CAPTURADO"
+}
 private fun CapturedEvent.receivedAtLabel() = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL")).format(Date(receivedAt))
 private fun CapturedEvent.receivedAtShortLabel() = SimpleDateFormat("dd MMM, HH:mm", Locale("es", "CL")).format(Date(receivedAt))
 private fun Long.isCurrentMonth(): Boolean {
