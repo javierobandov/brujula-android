@@ -1,3 +1,8 @@
+val firebaseApiKey = providers.gradleProperty("BRUJULA_FIREBASE_API_KEY").orNull ?: System.getenv("BRUJULA_FIREBASE_API_KEY") ?: ""
+val firebaseAppId = providers.gradleProperty("BRUJULA_FIREBASE_APP_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_APP_ID") ?: ""
+val firebaseProjectId = providers.gradleProperty("BRUJULA_FIREBASE_PROJECT_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_PROJECT_ID") ?: ""
+fun quotedBuildConfig(value: String) = "\\\"${value.replace("\\\\", "\\\\\\\\").replace("\\\"", "\\\\\\\"")}\\\""
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,6 +18,11 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         versionName = providers.gradleProperty("versionName").getOrElse("0.1.0")
     }
     buildFeatures { buildConfig = true }
+    defaultConfig {
+        buildConfigField("String", "FIREBASE_API_KEY", quotedBuildConfig(firebaseApiKey))
+        buildConfigField("String", "FIREBASE_APP_ID", quotedBuildConfig(firebaseAppId))
+        buildConfigField("String", "FIREBASE_PROJECT_ID", quotedBuildConfig(firebaseProjectId))
+    }
 
     val releaseStoreFile = providers.gradleProperty("BRUJULA_STORE_FILE").orNull ?: System.getenv("BRUJULA_STORE_FILE")
     val releaseStorePassword = providers.gradleProperty("BRUJULA_STORE_PASSWORD").orNull ?: System.getenv("BRUJULA_STORE_PASSWORD")
@@ -54,5 +64,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
