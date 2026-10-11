@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
     var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
+    var movementFilter by remember { mutableStateOf("Todos") }
+    var movementQuery by remember { mutableStateOf("") }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -284,12 +286,49 @@ class MainActivity : ComponentActivity() {
                 }
             }
                 if (selectedTab == 1) {
+                    val visibleMovements = captured.filter { event ->
+                        val matchesFilter = when (movementFilter) {
+                            "Pendientes" -> event.status == "captured" || event.status == "requires_review"
+                            "Confirmados" -> event.status == "confirmed" || event.status == "reconciled"
+                            else -> true
+                        }
+                        val query = movementQuery.trim()
+                        val matchesQuery = query.isBlank() ||
+                            event.merchant.orEmpty().contains(query, ignoreCase = true) ||
+                            event.rawText.contains(query, ignoreCase = true)
+                        matchesFilter && matchesQuery
+                    }
                     item {
                         Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("Revisa, confirma y corrige tus gastos capturados.", color = Color.Gray, fontSize = 13.sp)
+                        Text("Busca por comercio o texto y filtra lo que requiere revisión.", color = Color.Gray, fontSize = 13.sp)
+                        OutlinedTextField(
+                            value = movementQuery,
+                            onValueChange = { movementQuery = it },
+                            label = { Text("Buscar movimiento") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Todos", "Pendientes", "Confirmados").forEach { filter ->
+                                FilterChip(
+                                    selected = movementFilter == filter,
+                                    onClick = { movementFilter = filter },
+                                    label = { Text(filter) }
+                                )
+                            }
+                        }
+                        Text("${visibleMovements.size} movimiento(s) visible(s)", color = Color.Gray, fontSize = 12.sp)
                     }
-                    if (captured.isEmpty()) item { Text("Todavía no hay movimientos capturados.", color = Color.Gray, fontSize = 13.sp) }
-                    else items(captured) { event -> CapturedEventRow(event) { CapturedEventStore(activity).updateStatus(event.id, "confirmed"); captured = CapturedEventStore(activity).recent() } }
+                    if (visibleMovements.isEmpty()) {
+                        item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Color.Gray, fontSize = 13.sp) }
+                    } else {
+                        items(visibleMovements) { event ->
+                            CapturedEventRow(event) {
+                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                captured = CapturedEventStore(activity).recent()
+                            }
+                        }
+                    }
                 }
                 if (selectedTab == 2) {
                     item {
