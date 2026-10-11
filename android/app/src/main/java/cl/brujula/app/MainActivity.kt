@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
     val updateChecker = remember { UpdateChecker(activity) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
+    var showManualDialog by remember { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
@@ -94,6 +95,9 @@ class MainActivity : ComponentActivity() {
                     updateStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                 }
                 item {
+                    OutlinedButton(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Agregar gasto manual")
+                    }
                     OutlinedButton(onClick = { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.fillMaxWidth()) {
                         Text("Configurar captura de notificaciones")
                     }
@@ -136,6 +140,74 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        if (showManualDialog) {
+            var manualMerchant by remember { mutableStateOf("") }
+            var manualAmount by remember { mutableStateOf("") }
+            var manualCategory by remember { mutableStateOf("otros") }
+            var manualSource by remember { mutableStateOf("cuenta_corriente") }
+            var manualError by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showManualDialog = false },
+                title = { Text("Agregar gasto manual") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = manualMerchant,
+                            onValueChange = { manualMerchant = it },
+                            label = { Text("Comercio o descripción") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = manualAmount,
+                            onValueChange = { manualAmount = it },
+                            label = { Text("Monto en pesos") },
+                            singleLine = true
+                        )
+                        Text("Medio de pago", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("cuenta_corriente" to "Cuenta corriente", "tarjeta_credito" to "Tarjeta").forEach { (value, label) ->
+                                FilterChip(
+                                    selected = manualSource == value,
+                                    onClick = { manualSource = value },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        Text("Categoría", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("alimentacion" to "Alim.", "transporte" to "Transp.", "salud" to "Salud", "otros" to "Otros").forEach { (value, label) ->
+                                FilterChip(
+                                    selected = manualCategory == value,
+                                    onClick = { manualCategory = value },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        manualError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val amount = parseClpInput(manualAmount)
+                        when {
+                            manualMerchant.isBlank() -> manualError = "Escribe una descripción."
+                            amount == null || amount <= 0 -> manualError = "Ingresa un monto válido."
+                            else -> {
+                                CapturedEventStore(activity).insertManualExpense(
+                                    merchant = manualMerchant,
+                                    amount = amount,
+                                    category = manualCategory,
+                                    paymentSource = manualSource
+                                )
+                                captured = CapturedEventStore(activity).recent()
+                                showManualDialog = false
+                            }
+                        }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showManualDialog = false }) { Text("Cancelar") } }
+            )
+        }
         editingEvent?.let { event ->
             AlertDialog(
                 onDismissRequest = { editingEvent = null },
@@ -172,7 +244,7 @@ class MainActivity : ComponentActivity() {
 @Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
+            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
                 TextButton(onClick = onEditCategory) { Text("Cambiar categoría") }
@@ -193,13 +265,14 @@ private fun Long.isCurrentMonth(): Boolean {
 }
 
 private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
-    appendLine("fecha_hora,estado,tipo_movimiento,categoria,comercio,monto,paquete_origen,texto_original")
+    appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
     events.forEach { event ->
         appendLine(listOf(
             event.receivedAtLabel(),
             event.statusLabel(),
             event.movementTypeLabel(),
             event.categoryLabel(),
+            event.paymentSourceLabel(),
             event.merchant.orEmpty(),
             event.amount?.toString().orEmpty(),
             event.sourcePackage,
@@ -215,6 +288,16 @@ private fun CapturedEvent.movementTypeLabel() = when (movementType) {
     else -> "GASTO"
 }
 
+
+private fun CapturedEvent.paymentSourceLabel() = when (paymentSource) {
+    "tarjeta_credito" -> "TARJETA"
+    "cuenta_corriente" -> "CUENTA_CORRIENTE"
+    "manual" -> "MANUAL"
+    else -> "NOTIFICACION"
+}
+
+private fun parseClpInput(value: String): Int? =
+    value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
 
 private fun CapturedEvent.categoryLabel() = when (category) {
     "alimentacion" -> "ALIMENTACION"
