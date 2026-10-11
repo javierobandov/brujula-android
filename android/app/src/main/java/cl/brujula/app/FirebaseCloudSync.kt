@@ -47,28 +47,36 @@ class FirebaseCloudSync(context: Context) {
                     return@addOnSuccessListener
                 }
                 val firestore = FirebaseFirestore.getInstance(app)
-                val batch = firestore.batch()
                 val collection = firestore.collection("users").document(uid).collection("events")
-                events.forEach { event ->
-                    val data = hashMapOf<String, Any?>(
-                        "schema_version" to 1,
-                        "fingerprint" to event.fingerprint,
-                        "received_at" to event.receivedAt,
-                        "source_package" to event.sourcePackage,
-                        "raw_text" to event.rawText,
-                        "amount" to event.amount,
-                        "merchant" to event.merchant,
-                        "movement_type" to event.movementType,
-                        "category" to event.category,
-                        "payment_source" to event.paymentSource,
-                        "status" to event.status,
-                        "updated_at" to FieldValue.serverTimestamp()
-                    )
-                    batch.set(collection.document(event.fingerprint), data)
+                val chunks = events.chunked(450)
+                fun commitChunk(index: Int) {
+                    if (index >= chunks.size) {
+                        onResult("Sincronizados ${events.size} movimientos en Firebase.")
+                        return
+                    }
+                    val batch = firestore.batch()
+                    chunks[index].forEach { event ->
+                        val data = hashMapOf<String, Any?>(
+                            "schema_version" to 1,
+                            "fingerprint" to event.fingerprint,
+                            "received_at" to event.receivedAt,
+                            "source_package" to event.sourcePackage,
+                            "raw_text" to event.rawText,
+                            "amount" to event.amount,
+                            "merchant" to event.merchant,
+                            "movement_type" to event.movementType,
+                            "category" to event.category,
+                            "payment_source" to event.paymentSource,
+                            "status" to event.status,
+                            "updated_at" to FieldValue.serverTimestamp()
+                        )
+                        batch.set(collection.document(event.fingerprint), data)
+                    }
+                    batch.commit()
+                        .addOnSuccessListener { commitChunk(index + 1) }
+                        .addOnFailureListener { onResult("No se pudo completar la sincronización; los datos locales no se modificaron.") }
                 }
-                batch.commit()
-                    .addOnSuccessListener { onResult("Sincronizados ${events.size} movimientos en Firebase.") }
-                    .addOnFailureListener { onResult("No se pudo completar la sincronización; los datos locales no se modificaron.") }
+                commitChunk(0)
             }
     }
 }
