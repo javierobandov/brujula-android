@@ -47,6 +47,16 @@ class MainActivity : ComponentActivity() {
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
+    var statementStatus by remember { mutableStateOf<String?>(null) }
+    val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val store = CapturedEventStore(activity)
+        val imported = importStatementCsv(activity, csv)
+        val reconciled = store.reconcileStatements()
+        captured = store.recent()
+        statementStatus = if (imported == 0) "No se reconocieron movimientos de cartola." else "Cartola: $imported movimientos importados; $reconciled conciliados automáticamente."
+    }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -76,7 +86,7 @@ class MainActivity : ComponentActivity() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed") && it.amount != null }
+    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val total = expenses.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
@@ -98,7 +108,13 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Importar respaldo CSV")
                     }
+                    OutlinedButton(onClick = {
+                        statementLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*"))
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Importar cartola CSV")
+                    }
                     importStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                    statementStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                     OutlinedButton(onClick = {
                         updateStatus = "Buscando actualización…"
                         updateChecker.check { result ->
@@ -289,6 +305,8 @@ private fun percent(amount: Int) = (amount / 1_000_000f * 100).toInt()
 private fun CapturedEvent.statusLabel() = when (status) {
     "demo" -> "DEMO"
     "confirmed" -> "CONFIRMADO"
+    "reconciled" -> "CONCILIADO"
+    "requires_review" -> "REQUIERE_REVISION"
     else -> "CAPTURADO"
 }
 private fun CapturedEvent.receivedAtLabel() = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL")).format(Date(receivedAt))
@@ -340,6 +358,39 @@ private fun CapturedEvent.categoryLabel() = when (category) {
     "suscripciones" -> "SUSCRIPCIONES"
     "salud" -> "SALUD"
     else -> "OTROS"
+}
+
+private fun importStatementCsv(activity: MainActivity, csv: String): Int {
+    val rows = parseCsvRows(csv)
+    if (rows.size < 2) return 0
+    val header = rows.first().map { it.trim().lowercase(Locale.ROOT) }
+    fun indexOf(names: List<String>) = header.indexOfFirst { value -> names.any { name -> value.contains(name) } }
+    val dateIndex = indexOf(listOf("fecha"))
+    val merchantIndex = indexOf(listOf("comercio", "descrip", "detalle", "glosa", "concepto", "merchant"))
+    val amountIndex = indexOf(listOf("monto", "amount", "cargo", "debe", "debit"))
+    if (dateIndex < 0 || merchantIndex < 0 || amountIndex < 0) return 0
+    val store = CapturedEventStore(activity)
+    return rows.drop(1).count { row ->
+        if (row.size <= maxOf(dateIndex, merchantIndex, amountIndex)) return@count false
+        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull() ?: return@count false
+        if (amount <= 0) return@count false
+        val merchant = row[merchantIndex].trim()
+        if (merchant.isBlank()) return@count false
+        val receivedAt = parseStatementDate(row[dateIndex]) ?: System.currentTimeMillis()
+        store.insertStatementEvent(
+            receivedAt = receivedAt,
+            rawText = row.joinToString(" | "),
+            amount = amount,
+            merchant = merchant
+        )
+    }
+}
+
+private fun parseStatementDate(value: String): Long? {
+    val patterns = listOf("dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss")
+    return patterns.firstNotNullOfOrNull { pattern ->
+        runCatching { SimpleDateFormat(pattern, Locale("es", "CL")).parse(value.trim())?.time }.getOrNull()
+    }
 }
 
 private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
