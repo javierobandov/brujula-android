@@ -359,7 +359,25 @@ class MainActivity : ComponentActivity() {
                         Text("Cuenta y respaldo", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text(if (cloudAccountLabel == "Sin cuenta cloud") "Conecta una cuenta cloud para recuperar tus movimientos." else "Cuenta activa: $cloudAccountLabel", color = Color.Gray, fontSize = 13.sp)
                         OutlinedButton(onClick = { showCloudAccountDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar cuenta cloud") }
-                        OutlinedButton(onClick = { showOperations = true; selectedTab = 0 }, modifier = Modifier.fillMaxWidth()) { Text("Abrir herramientas y respaldos") }
+                        if (cloudAccountLabel != "Sin cuenta cloud") {
+                            Button(
+                                onClick = {
+                                    syncStatus = "Sincronizando…"
+                                    firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result -> syncStatus = result }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Sincronizar y recuperar movimientos") }
+                        }
+                        OutlinedButton(
+                            onClick = { syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json") },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Exportar respaldo portátil") }
+                        OutlinedButton(
+                            onClick = { syncImportLauncher.launch(arrayOf("application/json", "text/json", "text/*")) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Importar respaldo portátil") }
+                        syncStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                        OutlinedButton(onClick = { showOperations = true; selectedTab = 0 }, modifier = Modifier.fillMaxWidth()) { Text("Abrir herramientas avanzadas") }
                     }
                 }
         }
