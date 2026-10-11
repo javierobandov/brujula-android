@@ -24,7 +24,7 @@ class FirebaseCloudSync(context: Context) {
             return
         }
         auth.signInWithEmailAndPassword(email.trim(), password)
-            .addOnSuccessListener { onResult("Sesión iniciada para \${it.user?.email ?: email.trim()}.") }
+            .addOnSuccessListener { onResult("Sesión iniciada para ${it.user?.email ?: email.trim()}.") }
             .addOnFailureListener { onResult("No se pudo iniciar sesión. Revisa el correo, la contraseña y que Email/Password esté habilitado en Firebase.") }
     }
 
@@ -35,7 +35,7 @@ class FirebaseCloudSync(context: Context) {
             return
         }
         auth.createUserWithEmailAndPassword(email.trim(), password)
-            .addOnSuccessListener { onResult("Cuenta creada para \${it.user?.email ?: email.trim()}.") }
+            .addOnSuccessListener { onResult("Cuenta creada para ${it.user?.email ?: email.trim()}.") }
             .addOnFailureListener { onResult("No se pudo crear la cuenta. Usa un correo válido y una contraseña de al menos 6 caracteres.") }
     }
 
@@ -59,11 +59,39 @@ class FirebaseCloudSync(context: Context) {
         val uid = user.uid
         val firestore = FirebaseFirestore.getInstance(app)
         val collection = firestore.collection("users").document(uid).collection("events")
-        val chunks = events.chunked(450)
+        val syncableEvents = events.filter { it.status != "demo" && it.status != "ignored" }
+        val chunks = syncableEvents.chunked(450)
+
+        fun pullRemote() {
+            collection.get()
+                .addOnSuccessListener { snapshot ->
+                    val store = CapturedEventStore(appContext)
+                    val recovered = snapshot.documents.count { document ->
+                        val fingerprint = document.getString("fingerprint").orEmpty()
+                        if (fingerprint.isBlank()) return@count false
+                        store.insertSyncEvent(
+                            fingerprint = fingerprint,
+                            receivedAt = document.getLong("received_at") ?: System.currentTimeMillis(),
+                            sourcePackage = document.getString("source_package") ?: "firebase",
+                            rawText = document.getString("raw_text").orEmpty(),
+                            amount = document.getLong("amount")?.toInt(),
+                            merchant = document.getString("merchant"),
+                            movementType = document.getString("movement_type") ?: "expense",
+                            category = document.getString("category") ?: "otros",
+                            paymentSource = document.getString("payment_source") ?: "notificacion",
+                            status = document.getString("status") ?: "captured"
+                        )
+                    }
+                    onResult("Sincronizados ${syncableEvents.size} y recuperados ${recovered} movimientos.")
+                }
+                .addOnFailureListener {
+                    onResult("Datos locales sincronizados, pero no se pudieron recuperar cambios cloud.")
+                }
+        }
 
         fun commitChunk(index: Int) {
             if (index >= chunks.size) {
-                onResult("Sincronizados \${events.size} movimientos en Firebase.")
+                pullRemote()
                 return
             }
             val batch = firestore.batch()
