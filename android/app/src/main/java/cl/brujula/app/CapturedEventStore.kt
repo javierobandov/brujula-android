@@ -147,7 +147,6 @@ class CapturedEventStore(context: Context) {
                     }
                 }
             }
-            }
             if (oldVersion < 5) {
                 db.execSQL("ALTER TABLE events ADD COLUMN category_manual INTEGER NOT NULL DEFAULT 0")
             }
