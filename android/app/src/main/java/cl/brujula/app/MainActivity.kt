@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
     var statementStatus by remember { mutableStateOf<String?>(null) }
     var monthlyBudget by remember { mutableStateOf(BudgetSettings(activity).monthlyBudget()) }
     var showBudgetDialog by remember { mutableStateOf(false) }
+    var showOperations by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -123,7 +125,7 @@ class MainActivity : ComponentActivity() {
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Captura local en prueba · sin sincronización bancaria", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
+                item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Privado en tu teléfono · nube opcional", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
                 item {
                     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                         Column(Modifier.padding(20.dp)) { Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp); Text(clp(total), color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(14.dp)); LinearProgressIndicator(progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Green, trackColor = Color(0xFFE8EEE9)); Spacer(Modifier.height(8.dp)); Text("${percent(total, monthlyBudget)}% del presupuesto utilizado", color = Green, fontSize = 12.sp); Text("Presupuesto mensual: ${clp(monthlyBudget)}", color = Color.Gray, fontSize = 12.sp); Text("Conciliación: $reconciledCount conciliados · $pendingReconciliation por revisar", color = if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
@@ -150,6 +152,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Button(onClick = { syncing = true; captured = CapturedEventStore(activity).recent(); syncing = false }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Actualizando…" else "Actualizar resumen") }
+                    OutlinedButton(onClick = { showOperations = !showOperations }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showOperations) "Ocultar herramientas" else "Mostrar herramientas")
+                    }
+                    if (showOperations) {
                     OutlinedButton(onClick = { exportLauncher.launch("brujula-respaldo-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
                         Text("Exportar respaldo CSV completo")
                     }
@@ -199,8 +205,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     updateStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                    }
                 }
                 item {
+                    OutlinedButton(onClick = { showSettings = !showSettings }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showSettings) "Ocultar configuración" else "Mostrar configuración")
+                    }
+                    if (showSettings) {
                     OutlinedButton(onClick = { showBudgetDialog = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Configurar presupuesto mensual")
                     }
@@ -227,6 +238,7 @@ class MainActivity : ComponentActivity() {
                         captured = CapturedEventStore(activity).recent()
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Limpiar eventos DEMO")
+                    }
                     }
                     Text("La app sólo guardará notificaciones filtradas de movimientos; no usa credenciales bancarias.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
