@@ -60,7 +60,8 @@ class MainActivity : ComponentActivity() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val realCaptured = captured.filter { it.status == "captured" && it.amount != null }
-    val total = realCaptured.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
+    val expenses = realCaptured.filter { it.movementType == "expense" }
+    val total = expenses.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -138,7 +139,7 @@ class MainActivity : ComponentActivity() {
 @Composable private fun CapturedExpenseRow(event: CapturedEvent) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("Pendiente de categorizar · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
+            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.movementTypeLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
             Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
         }
     }
@@ -156,17 +157,25 @@ private fun Long.isCurrentMonth(): Boolean {
 }
 
 private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
-    appendLine("fecha_hora,estado,comercio,monto,paquete_origen,texto_original")
+    appendLine("fecha_hora,estado,tipo_movimiento,comercio,monto,paquete_origen,texto_original")
     events.forEach { event ->
         appendLine(listOf(
             event.receivedAtLabel(),
             event.statusLabel(),
+            event.movementTypeLabel(),
             event.merchant.orEmpty(),
             event.amount?.toString().orEmpty(),
             event.sourcePackage,
             event.rawText
         ).joinToString(",") { csvCell(it) })
     }
+}
+
+private fun CapturedEvent.movementTypeLabel() = when (movementType) {
+    "card_payment" -> "PAGO_TARJETA"
+    "refund" -> "DEVOLUCION"
+    "transfer" -> "TRANSFERENCIA"
+    else -> "GASTO"
 }
 
 private fun csvCell(value: String): String = "\"${value.replace("\"", "\"\"")}\""
