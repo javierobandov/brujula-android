@@ -47,7 +47,7 @@ La app debe guardar sólo la sesión de Firebase, nunca credenciales bancarias. 
 
 ## Estado de la integración
 
-La app ya contiene un adaptador opcional de Firebase y una acción de sincronización por lotes de 450 eventos. Sin configuración, la acción informa que sigue en modo local y no altera los datos. La primera prueba técnica usa identidad anónima; antes de considerarla recuperación entre teléfonos se debe migrar a correo/contraseña o a otra identidad persistente.
+La app ya contiene un adaptador opcional de Firebase y una acción de sincronización por lotes de 450 eventos. Sin configuración, la acción informa que sigue en modo local y no altera los datos. La app usa una cuenta persistente de Firebase Authentication con correo y contraseña. La contraseña sólo la procesa Firebase Authentication; Brújula no la almacena ni la envía a un servidor propio. Si no hay sesión iniciada, la app conserva el modo local y no intenta sincronizar.
 
 ## Orden de implementación
 
@@ -55,11 +55,12 @@ La app ya contiene un adaptador opcional de Firebase y una acción de sincroniza
 2. Registrar la aplicación Android `cl.brujula.app`.
 3. Incorporar `google-services.json` al entorno de compilación sin publicarlo en el repositorio.
 4. Añadir Firebase BoM, Authentication y Firestore.
-5. Crear pantalla de inicio/cierre de sesión.
-6. Sincronizar por fingerprint desde el paquete JSON ya implementado.
-7. Descargar cambios remotos por cursor y aplicar conflictos con precedencia de fuente.
-8. Probar restauración en un segundo dispositivo.
-9. Publicar una release sólo después de validar reglas y recuperación.
+5. Activar el proveedor Email/Password en Firebase Authentication.
+6. Crear o iniciar sesión desde la pantalla de cuenta cloud; Firebase mantiene la sesión segura en el dispositivo.
+7. Sincronizar por fingerprint desde el paquete JSON ya implementado.
+8. Descargar cambios remotos por cursor y aplicar conflictos con precedencia de fuente.
+9. Probar restauración en un segundo dispositivo.
+10. Publicar una release sólo después de validar reglas y recuperación.
 
 ## Límites y contingencia
 
