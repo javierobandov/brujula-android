@@ -93,7 +93,12 @@ class MainActivity : ComponentActivity() {
     val pendingReconciliation = captured.count { it.status == "requires_review" }
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
-    val total = expenses.filter { it.receivedAt.isCurrentMonth() }.sumOf { it.amount ?: 0 }
+    val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
+    val total = monthExpenses.sumOf { it.amount ?: 0 }
+    val categoryTotals = listOf("alimentacion", "transporte", "suscripciones", "salud", "otros")
+        .map { category -> category to monthExpenses.filter { it.category == category }.sumOf { it.amount ?: 0 } }
+    val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
+        .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -104,9 +109,28 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 item {
+                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Distribución del mes", color = Ink, fontWeight = FontWeight.Bold)
+                            categoryTotals.filter { it.second > 0 }.forEach { (category, amount) ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(category.replaceFirstChar { it.uppercase() }, color = Color.Gray, fontSize = 12.sp)
+                                    Text(clp(amount), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Text("Por medio de pago", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                            paymentTotals.filter { it.second > 0 }.forEach { (source, amount) ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(source.replace("_", " ").replaceFirstChar { it.uppercase() }, color = Color.Gray, fontSize = 12.sp)
+                                    Text(clp(amount), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            if (total == 0) Text("Aún no hay gastos reales en el mes actual.", color = Color.Gray, fontSize = 12.sp)
+                        }
+                    }
                     Button(onClick = { syncing = true; captured = CapturedEventStore(activity).recent(); syncing = false }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Actualizando…" else "Actualizar resumen") }
-                    OutlinedButton(onClick = { exportLauncher.launch("brujula-eventos-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Exportar bandeja CSV")
+                    OutlinedButton(onClick = { exportLauncher.launch("brujula-respaldo-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Exportar respaldo CSV completo")
                     }
                     OutlinedButton(onClick = {
                         importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*"))
