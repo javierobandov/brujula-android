@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-            writer.write(capturedCsv(captured))
+            writer.write(capturedCsv(CapturedEventStore(activity).recent(10_000)))
         }
     }
     LaunchedEffect(Unit) {
@@ -507,7 +507,12 @@ private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
             movementType = row[typeIndex].toMovementType(),
             category = row[categoryIndex].toCategory(),
             paymentSource = row[paymentIndex].toPaymentSource(),
-            status = if (statusLabel == "CONFIRMADO") "confirmed" else "captured"
+            status = when (statusLabel) {
+                "CONFIRMADO" -> "confirmed"
+                "CONCILIADO" -> "reconciled"
+                "REQUIERE_REVISION" -> "requires_review"
+                else -> "captured"
+            }
         )
     }
 }
