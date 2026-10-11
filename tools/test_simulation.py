@@ -9,3 +9,4 @@ def test_end_to_end_simulation():
     assert result["reconciled"] == 2
     assert result["month_total"] == 47_440
     assert result["chatgpt_package"]["privacy"].startswith("datos ficticios")
+    assert result["local_assistant_preview"]["requires_user_confirmation"] is True
