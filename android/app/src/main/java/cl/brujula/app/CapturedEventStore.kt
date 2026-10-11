@@ -15,6 +15,7 @@ data class CapturedEvent(
     val amount: Int?,
     val merchant: String?,
     val movementType: String,
+    val category: String,
     val status: String
 )
 
@@ -32,6 +33,7 @@ class CapturedEventStore(context: Context) {
             put("amount", parseAmount(rawText))
             put("merchant", parseMerchant(rawText))
             put("movement_type", classifyMovement(rawText))
+            put("category", classifyCategory(rawText))
             put("status", status)
         }
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
@@ -71,6 +73,7 @@ class CapturedEventStore(context: Context) {
                     amount = cursor.getIntOrNull("amount"),
                     merchant = cursor.getStringOrNull("merchant"),
                     movementType = cursor.getStringOrNull("movement_type") ?: "expense",
+                    category = cursor.getStringOrNull("category") ?: "otros",
                     status = cursor.getString(cursor.getColumnIndexOrThrow("status"))
                 )
             }
@@ -78,7 +81,7 @@ class CapturedEventStore(context: Context) {
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 3) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 4) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -90,6 +93,7 @@ class CapturedEventStore(context: Context) {
                     amount INTEGER,
                     merchant TEXT,
                     movement_type TEXT NOT NULL DEFAULT 'expense',
+                    category TEXT NOT NULL DEFAULT 'otros',
                     status TEXT NOT NULL
                 )""".trimIndent()
             )
@@ -115,6 +119,18 @@ class CapturedEventStore(context: Context) {
                     while (cursor.moveToNext()) {
                         val values = ContentValues().apply {
                             put("movement_type", classifyMovement(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
+                        }
+                        db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
+                    }
+                }
+            }
+            }
+            if (oldVersion < 4) {
+                db.execSQL("ALTER TABLE events ADD COLUMN category TEXT NOT NULL DEFAULT 'otros'")
+                db.query("events", arrayOf("id", "raw_text"), null, null, null, null, null).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val values = ContentValues().apply {
+                            put("category", classifyCategory(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
                         }
                         db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
                     }
