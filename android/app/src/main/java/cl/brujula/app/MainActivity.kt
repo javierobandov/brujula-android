@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -124,7 +125,15 @@ class MainActivity : ComponentActivity() {
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
-            LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                item {
+                    TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
+                        listOf("Resumen", "Movimientos", "Captura", "Cuenta").forEachIndexed { index, label ->
+                            Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(label, fontSize = 11.sp) })
+                        }
+                    }
+                }
+                if (selectedTab == 0) {
                 item { Text("BRÚJULA", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Tus gastos claros.", color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold); Text("Privado en tu teléfono · nube opcional", color = Color.Gray, fontSize = 14.sp); Text("La bandeja se actualiza al volver a la app y periódicamente mientras está abierta.", color = Color.Gray, fontSize = 12.sp) }
                 item {
                     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -274,6 +283,30 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+                if (selectedTab == 1) {
+                    item {
+                        Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Revisa, confirma y corrige tus gastos capturados.", color = Color.Gray, fontSize = 13.sp)
+                    }
+                    if (captured.isEmpty()) item { Text("Todavía no hay movimientos capturados.", color = Color.Gray, fontSize = 13.sp) }
+                    else items(captured) { event -> CapturedEventRow(event) { CapturedEventStore(activity).updateStatus(event.id, "confirmed"); captured = CapturedEventStore(activity).recent() } }
+                }
+                if (selectedTab == 2) {
+                    item {
+                        Text("Captura de gastos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Scotiabank se captura desde sus notificaciones. También puedes registrar un gasto manual.", color = Color.Gray, fontSize = 13.sp)
+                        OutlinedButton(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar gasto manual") }
+                        OutlinedButton(onClick = { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.fillMaxWidth()) { Text("Configurar notificaciones") }
+                    }
+                }
+                if (selectedTab == 3) {
+                    item {
+                        Text("Cuenta y respaldo", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Conecta una cuenta cloud para recuperar tus movimientos." else "Cuenta activa: $cloudAccountLabel", color = Color.Gray, fontSize = 13.sp)
+                        OutlinedButton(onClick = { showCloudAccountDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar cuenta cloud") }
+                        OutlinedButton(onClick = { showOperations = true; selectedTab = 0 }, modifier = Modifier.fillMaxWidth()) { Text("Abrir herramientas y respaldos") }
+                    }
+                }
         }
         if (showManualDialog) {
             var manualMerchant by remember { mutableStateOf("") }
