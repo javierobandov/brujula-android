@@ -389,13 +389,11 @@ private fun parseCsvRows(csv: String): List<List<String>> {
     while (index < csv.length) {
         val char = csv[index]
         when {
-            char == '"' && quoted && index + 1 < csv.length && csv[index + 1] == '"' -> { field.append('"'); index++ }
-            char == '"' -> quoted = !quoted
-            char == ',' && !quoted -> { row += field.toString(); field.clear() }
-            (char == '
-' || char == '') && !quoted -> {
-                if (char == '' && index + 1 < csv.length && csv[index + 1] == '
-') index++
+            char.code == 34 && quoted && index + 1 < csv.length && csv[index + 1].code == 34 -> { field.append(char); index++ }
+            char.code == 34 -> quoted = !quoted
+            char.code == 44 && !quoted -> { row += field.toString(); field.clear() }
+            (char.code == 10 || char.code == 13) && !quoted -> {
+                if (char.code == 13 && index + 1 < csv.length && csv[index + 1].code == 10) index++
                 row += field.toString(); field.clear()
                 if (row.any { it.isNotBlank() }) rows += row.toList()
                 row.clear()
