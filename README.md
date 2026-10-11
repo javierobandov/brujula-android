@@ -32,4 +32,4 @@ La clave de firma debe respaldarse fuera del repositorio. Una instalación debug
 
 ## Sincronización
 
-La app puede exportar e importar un paquete JSON versionado e idempotente para preparar la futura sincronización cloud privada. El contrato está documentado en [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md). La app todavía no sube datos automáticamente ni usa credenciales bancarias.
+La app puede exportar e importar un paquete JSON versionado e idempotente para preparar la futura sincronización cloud privada. El contrato está documentado en [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) y la propuesta de backend en [`docs/CLOUD_BACKEND_PLAN.md`](docs/CLOUD_BACKEND_PLAN.md). La app todavía no sube datos automáticamente ni usa credenciales bancarias.
