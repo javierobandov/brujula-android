@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.NumberFormat
@@ -47,6 +48,8 @@ class MainActivity : ComponentActivity() {
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     val updateChecker = remember { UpdateChecker(activity) }
     val firebaseSync = remember { FirebaseCloudSync(activity) }
+    var cloudAccountLabel by remember { mutableStateOf(firebaseSync.currentUserEmail() ?: "Sin cuenta cloud") }
+    var showCloudAccountDialog by remember { mutableStateOf(false) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
@@ -158,6 +161,10 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Importar paquete de sincronización")
                     }
+                    OutlinedButton(onClick = { showCloudAccountDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Configurar cuenta cloud" else "Cuenta cloud: $cloudAccountLabel")
+                    }
+                    Text("La cuenta cloud permite recuperar tus movimientos en otro teléfono; la contraseña la gestiona Firebase y nunca se guarda en Brújula.", color = Color.Gray, fontSize = 12.sp)
                     syncStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                     OutlinedButton(onClick = {
                         syncStatus = "Sincronizando…"
@@ -322,6 +329,59 @@ class MainActivity : ComponentActivity() {
                     }) { Text("Guardar") }
                 },
                 dismissButton = { TextButton(onClick = { showManualDialog = false }) { Text("Cancelar") } }
+            )
+        }
+        if (showCloudAccountDialog) {
+            var accountEmail by remember { mutableStateOf("") }
+            var accountPassword by remember { mutableStateOf("") }
+            var accountMessage by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showCloudAccountDialog = false },
+                title = { Text("Cuenta cloud") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Usa un correo y contraseña sólo para la cuenta cloud de Brújula. No son tus credenciales bancarias.", color = Color.Gray, fontSize = 12.sp)
+                        OutlinedTextField(value = accountEmail, onValueChange = { accountEmail = it }, label = { Text("Correo") }, singleLine = true)
+                        OutlinedTextField(value = accountPassword, onValueChange = { accountPassword = it }, label = { Text("Contraseña") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                        accountMessage?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                        if (cloudAccountLabel != "Sin cuenta cloud") {
+                            Text("Sesión activa: $cloudAccountLabel", color = Green, fontSize = 12.sp)
+                            TextButton(onClick = {
+                                firebaseSync.signOut()
+                                cloudAccountLabel = "Sin cuenta cloud"
+                                syncStatus = "Sesión cloud cerrada."
+                                showCloudAccountDialog = false
+                            }) { Text("Cerrar sesión") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (accountEmail.isBlank() || accountPassword.length < 6) {
+                            accountMessage = "Ingresa un correo y una contraseña de al menos 6 caracteres."
+                        } else {
+                            firebaseSync.signIn(accountEmail, accountPassword) { result ->
+                                accountMessage = result
+                                firebaseSync.currentUserEmail()?.let { cloudAccountLabel = it }
+                            }
+                        }
+                    }) { Text("Iniciar sesión") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = {
+                            if (accountEmail.isBlank() || accountPassword.length < 6) {
+                                accountMessage = "Ingresa un correo y una contraseña de al menos 6 caracteres."
+                            } else {
+                                firebaseSync.createAccount(accountEmail, accountPassword) { result ->
+                                    accountMessage = result
+                                    firebaseSync.currentUserEmail()?.let { cloudAccountLabel = it }
+                                }
+                            }
+                        }) { Text("Crear cuenta") }
+                        TextButton(onClick = { showCloudAccountDialog = false }) { Text("Cancelar") }
+                    }
+                }
             )
         }
         if (showBudgetDialog) {
