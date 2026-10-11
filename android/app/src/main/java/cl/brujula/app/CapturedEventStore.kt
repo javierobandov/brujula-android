@@ -98,6 +98,11 @@ class CapturedEventStore(context: Context) {
     fun deleteDemoEvents(): Int =
         helper.writableDatabase.delete("events", "status = ?", arrayOf("demo"))
 
+    fun updateStatus(id: Long, status: String): Int {
+        val values = ContentValues().apply { put("status", status) }
+        return helper.writableDatabase.update("events", values, "id = ?", arrayOf(id.toString()))
+    }
+
     fun recent(limit: Int = 30): List<CapturedEvent> {
         val db = helper.readableDatabase
         val result = mutableListOf<CapturedEvent>()
