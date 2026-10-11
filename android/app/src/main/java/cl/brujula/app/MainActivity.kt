@@ -283,7 +283,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-                }
                 if (selectedTab == 1) {
                     item {
                         Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
