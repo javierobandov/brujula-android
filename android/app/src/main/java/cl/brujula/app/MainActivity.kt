@@ -484,6 +484,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+}
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6F1))) {
