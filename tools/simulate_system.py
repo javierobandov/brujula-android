@@ -76,6 +76,12 @@ def run_simulation() -> dict:
             "Propón un límite para transporte y suscripciones el próximo mes.",
         ],
     }
+    assistant_preview = {
+        "summary": f"Se detectaron {len(events)} movimientos por ${total:,}. Transporte y suscripciones requieren seguimiento.",
+        "alerts": ["Existe una notificación duplicada que fue descartada."],
+        "next_actions": ["Confirmar Netflix como suscripción recurrente.", "Definir un límite mensual para transporte."],
+        "requires_user_confirmation": True,
+    }
     return {
         "mode": "SIMULADO",
         "captured": len(parsed),
@@ -84,6 +90,7 @@ def run_simulation() -> dict:
         "month_total": total,
         "categories": dict(categories),
         "chatgpt_package": assistant_input,
+        "local_assistant_preview": assistant_preview,
     }
 
 
