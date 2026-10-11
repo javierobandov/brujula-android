@@ -453,7 +453,7 @@ class MainActivity : ComponentActivity() {
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
                         icon = {
-                            Text(
+                            Icon(
                                 imageVector = when (tab) { 0 -> Icons.Filled.Home; 1 -> Icons.Filled.List; 3 -> Icons.Filled.BarChart; else -> Icons.Filled.Person },
                                 contentDescription = label,
                                 tint = if (selectedTab == tab) Green else Color.Gray
@@ -726,6 +726,9 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+}
+
+}
 
 @Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
