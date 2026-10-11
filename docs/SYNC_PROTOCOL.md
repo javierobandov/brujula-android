@@ -37,3 +37,8 @@ La importación es idempotente: un fingerprint existente no crea un duplicado.
 7. Probar restauración completa en otro teléfono.
 
 Hasta completar esos pasos, la fuente operativa sigue siendo SQLite local y la cartola oficial sigue siendo la evidencia de conciliación.
+
+
+## Backend objetivo
+
+La primera implementación cloud está definida en [`CLOUD_BACKEND_PLAN.md`](CLOUD_BACKEND_PLAN.md), con Firebase Spark como opción provisional.
