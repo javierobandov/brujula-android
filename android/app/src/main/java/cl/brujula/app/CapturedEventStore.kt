@@ -87,6 +87,34 @@ class CapturedEventStore(context: Context) {
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
 
+    fun insertImportedEvent(
+        receivedAt: Long,
+        rawText: String,
+        amount: Int?,
+        merchant: String?,
+        movementType: String,
+        category: String,
+        paymentSource: String,
+        status: String
+    ): Boolean {
+        val db = helper.writableDatabase
+        val fingerprint = sha256("import|$receivedAt|$rawText|$amount|$merchant")
+        val values = ContentValues().apply {
+            put("fingerprint", fingerprint)
+            put("received_at", receivedAt)
+            put("source_package", "cl.brujula.app.import")
+            put("raw_text", rawText)
+            put("amount", amount)
+            put("merchant", merchant)
+            put("movement_type", movementType)
+            put("category", category)
+            put("category_manual", 1)
+            put("payment_source", paymentSource)
+            put("status", status)
+        }
+        return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+
     fun updateCategory(id: Long, category: String): Int {
         val values = ContentValues().apply {
             put("category", category)
