@@ -19,5 +19,14 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    match /users/{userId}/planning/{documentId} {
+      allow read, create, update: if request.auth != null
+        && request.auth.uid == userId
+        && documentId == 'snapshot'
+        && request.resource.data.schema_version == 1;
+
+      allow delete: if false;
+    }
   }
 }

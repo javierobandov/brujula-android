@@ -26,6 +26,8 @@ data class Commitment(
     val isActive: Boolean get() = !hasInstallments || remainingInstallments > 0
 }
 
+data class MonthlyProjection(val label: String, val commitmentTotal: Int, val activeCommitments: Int)
+
 /** Local-first planning data. It deliberately stores no bank credentials or notification text. */
 class PlanningStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("brujula_planning", Context.MODE_PRIVATE)
@@ -53,6 +55,22 @@ class PlanningStore(context: Context) {
 
     fun monthlyGoal(): Int = prefs.getInt("monthly_goal", 0)
     fun setMonthlyGoal(value: Int) { prefs.edit().putInt("monthly_goal", value.coerceAtLeast(0)).apply() }
+
+    fun projections(months: Int = 6): List<MonthlyProjection> {
+        val calendar = java.util.Calendar.getInstance()
+        return (0 until months).map { offset ->
+            val monthCalendar = calendar.clone() as java.util.Calendar
+            monthCalendar.add(java.util.Calendar.MONTH, offset)
+            val active = commitments().filter { commitment ->
+                !commitment.hasInstallments || commitment.currentInstallment + offset < commitment.totalInstallments
+            }
+            MonthlyProjection(
+                label = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale("es", "CL")).format(monthCalendar.time),
+                commitmentTotal = active.sumOf { it.amount },
+                activeCommitments = active.size
+            )
+        }
+    }
 
     fun addIncome(name: String, amount: Int, recurring: Boolean = true) {
         val values = incomes().toMutableList()
@@ -111,6 +129,35 @@ class PlanningStore(context: Context) {
         writeArray("incomes", JSONArray().apply { newIncomes.forEach { put(it.toJson()) } })
         writeArray("commitments", JSONArray().apply { newCommitments.forEach { put(it.toJson()) } })
         return imported
+    }
+
+    fun cloudData(): Map<String, Any> = mapOf(
+        "schema_version" to 1,
+        "monthly_goal" to monthlyGoal(),
+        "incomes" to incomes().map { mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "recurring" to it.recurring) },
+        "commitments" to commitments().map {
+            mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "current_installment" to it.currentInstallment,
+                "total_installments" to it.totalInstallments, "category" to it.category, "recurring" to it.recurring)
+        }
+    )
+
+    fun importCloudData(data: Map<String, Any?>): Int {
+        if ((data["schema_version"] as? Number)?.toInt() != 1) return 0
+        val root = JSONObject().apply {
+            put("schema_version", 1)
+            put("monthly_goal", (data["monthly_goal"] as? Number)?.toInt() ?: 0)
+            put("incomes", JSONArray().apply {
+                (data["incomes"] as? List<*>)?.forEach { item ->
+                    (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }
+                }
+            })
+            put("commitments", JSONArray().apply {
+                (data["commitments"] as? List<*>)?.forEach { item ->
+                    (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }
+                }
+            })
+        }
+        return importJson(root)
     }
 
     private fun <T> readArray(key: String, mapper: (JSONObject) -> T): List<T> = runCatching {

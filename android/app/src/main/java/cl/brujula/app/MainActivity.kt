@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
     val activeCommitments = planningStore.commitments().filter { it.isActive }
     val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
     val monthlyGoal = planningStore.monthlyGoal()
+    val projections = planningStore.projections()
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -374,6 +375,18 @@ class MainActivity : ComponentActivity() {
                                 Text("Compromisos activos: ${clp(plannedCommitmentTotal)}", color = Color(0xFF9A6500))
                                 Text("Disponible estimado: ${clp(plannedIncomeTotal - plannedCommitmentTotal)}", color = Ink, fontWeight = FontWeight.SemiBold)
                                 Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Proyección de compromisos", color = Ink, fontWeight = FontWeight.Bold)
+                                Text("Incluye cuotas futuras y gastos recurrentes registrados.", color = Color.Gray, fontSize = 12.sp)
+                                projections.forEach { projection ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(projection.label.replaceFirstChar { it.uppercase() }, color = Color.Gray, fontSize = 12.sp)
+                                        Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
                             }
                         }
                         OutlinedButton(onClick = { showIncomeDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar ingreso") }

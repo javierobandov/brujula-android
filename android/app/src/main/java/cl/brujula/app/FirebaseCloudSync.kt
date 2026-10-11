@@ -43,7 +43,7 @@ class FirebaseCloudSync(context: Context) {
         configuredAuth()?.signOut()
     }
 
-    fun sync(events: List<CapturedEvent>, onResult: (String) -> Unit) {
+    fun sync(events: List<CapturedEvent>, planning: PlanningStore = PlanningStore(appContext), onResult: (String) -> Unit) {
         val app = firebaseApp()
         if (app == null) {
             onResult("Firebase no configurado; los datos siguen sólo en el teléfono.")
@@ -59,6 +59,7 @@ class FirebaseCloudSync(context: Context) {
         val uid = user.uid
         val firestore = FirebaseFirestore.getInstance(app)
         val collection = firestore.collection("users").document(uid).collection("events")
+        val planningDocument = firestore.collection("users").document(uid).collection("planning").document("snapshot")
         val syncableEvents = events.filter { it.status != "demo" && it.status != "ignored" }
         val chunks = syncableEvents.chunked(450)
 
@@ -82,7 +83,12 @@ class FirebaseCloudSync(context: Context) {
                             status = document.getString("status") ?: "captured"
                         )
                     }
-                    onResult("Sincronizados ${syncableEvents.size} y recuperados ${recovered} movimientos.")
+                    planningDocument.get()
+                        .addOnSuccessListener { planningSnapshot ->
+                            val planningRecovered = if (planningSnapshot.exists()) planning.importCloudData(planningSnapshot.data.orEmpty()) else 0
+                            onResult("Sincronizados ${syncableEvents.size} y recuperados ${recovered} movimientos; planificación recuperada: $planningRecovered elementos.")
+                        }
+                        .addOnFailureListener { onResult("Movimientos sincronizados; no se pudo recuperar la planificación cloud.") }
                 }
                 .addOnFailureListener {
                     onResult("Datos locales sincronizados, pero no se pudieron recuperar cambios cloud.")
@@ -91,7 +97,9 @@ class FirebaseCloudSync(context: Context) {
 
         fun commitChunk(index: Int) {
             if (index >= chunks.size) {
-                pullRemote()
+                planningDocument.set(planning.cloudData())
+                    .addOnSuccessListener { pullRemote() }
+                    .addOnFailureListener { onResult("Movimientos sincronizados; no se pudo guardar la planificación cloud.") }
                 return
             }
             val batch = firestore.batch()
