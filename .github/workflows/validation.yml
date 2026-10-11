@@ -23,3 +23,5 @@ jobs:
       - name: Test Excel import contract
         working-directory: tools
         run: python test_excel_to_brujula.py
+      - name: Test simulated financial flow
+        run: python -c "from tools.test_simulation import test_end_to_end_simulation; test_end_to_end_simulation()"
