@@ -45,6 +45,19 @@ class CapturedEventStore(context: Context) {
             status = "demo"
         )
 
+
+    fun insertClassificationDemoEvents(receivedAt: Long = System.currentTimeMillis()): Int {
+        val samples = listOf(
+            "DEMO · Scotiabank: compra en Comercio Ejemplo por \\$12.345",
+            "DEMO · Scotiabank: pago de tu tarjeta de crédito por \\$50.000",
+            "DEMO · Scotiabank: transferencia por \\$15.000 a Cuenta Ejemplo",
+            "DEMO · Scotiabank: devolución por \\$7.000 de Comercio Ejemplo"
+        )
+        return samples.mapIndexed { index, text ->
+            insertIfNew("cl.brujula.app.demo", text, receivedAt + index * 60_000L, status = "demo")
+        }.count { it }
+    }
+
     fun recent(limit: Int = 30): List<CapturedEvent> {
         val db = helper.readableDatabase
         val result = mutableListOf<CapturedEvent>()
