@@ -124,7 +124,6 @@ class CapturedEventStore(context: Context) {
                     }
                 }
             }
-            }
             if (oldVersion < 4) {
                 db.execSQL("ALTER TABLE events ADD COLUMN category TEXT NOT NULL DEFAULT 'otros'")
                 db.query("events", arrayOf("id", "raw_text"), null, null, null, null, null).use { cursor ->
@@ -176,6 +175,18 @@ private fun classifyMovement(text: String): String {
         listOf("devolución", "devolucion", "reembolso", "reversa", "reverso", "devuelto").any(normalized::contains) -> "refund"
         listOf("transferencia", "traspaso", "depósito", "deposito").any(normalized::contains) -> "transfer"
         else -> "expense"
+    }
+}
+
+
+private fun classifyCategory(text: String): String {
+    val normalized = text.lowercase(Locale.ROOT)
+    return when {
+        listOf("jumbo", "lider", "unimarc", "supermercado", "mercado").any(normalized::contains) -> "alimentacion"
+        listOf("uber", "recorrido", "taxi", "cabify", "transantiago").any(normalized::contains) -> "transporte"
+        listOf("netflix", "spotify", "youtube", "suscripcion", "suscripción").any(normalized::contains) -> "suscripciones"
+        listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica").any(normalized::contains) -> "salud"
+        else -> "otros"
     }
 }
 
