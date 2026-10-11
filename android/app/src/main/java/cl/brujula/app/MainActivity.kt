@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
     var selectedTab by remember { mutableStateOf(0) }
     var movementFilter by remember { mutableStateOf("Todos") }
     var movementQuery by remember { mutableStateOf("") }
+    var movementPayment by remember { mutableStateOf("Todos") }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -296,7 +297,12 @@ class MainActivity : ComponentActivity() {
                         val matchesQuery = query.isBlank() ||
                             event.merchant.orEmpty().contains(query, ignoreCase = true) ||
                             event.rawText.contains(query, ignoreCase = true)
-                        matchesFilter && matchesQuery
+                        val matchesPayment = when (movementPayment) {
+                            "Tarjeta" -> event.paymentSource == "tarjeta_credito"
+                            "Cuenta" -> event.paymentSource == "cuenta_corriente"
+                            else -> true
+                        }
+                        matchesFilter && matchesQuery && matchesPayment
                     }
                     item {
                         Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -314,6 +320,16 @@ class MainActivity : ComponentActivity() {
                                     selected = movementFilter == filter,
                                     onClick = { movementFilter = filter },
                                     label = { Text(filter) }
+                                )
+                            }
+                        }
+                        Text("Medio de pago", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Todos", "Tarjeta", "Cuenta").forEach { payment ->
+                                FilterChip(
+                                    selected = movementPayment == payment,
+                                    onClick = { movementPayment = payment },
+                                    label = { Text(payment) }
                                 )
                             }
                         }
