@@ -42,6 +42,11 @@ jobs:
           BRUJULA_STORE_PASSWORD: ${{ secrets.BRUJULA_STORE_PASSWORD }}
           BRUJULA_KEY_ALIAS: ${{ secrets.BRUJULA_KEY_ALIAS }}
           BRUJULA_KEY_PASSWORD: ${{ secrets.BRUJULA_KEY_PASSWORD }}
+          # Firebase Android identifiers from google-services.json.
+          # These are public app configuration values, not bank credentials.
+          BRUJULA_FIREBASE_API_KEY: ${{ vars.BRUJULA_FIREBASE_API_KEY }}
+          BRUJULA_FIREBASE_APP_ID: ${{ vars.BRUJULA_FIREBASE_APP_ID }}
+          BRUJULA_FIREBASE_PROJECT_ID: ${{ vars.BRUJULA_FIREBASE_PROJECT_ID }}
         run: |
           VERSION_NAME="${GITHUB_REF_NAME#v}"
           ./gradlew --no-daemon assembleRelease \
