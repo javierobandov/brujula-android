@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity() {
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showIncomeDialog by remember { mutableStateOf(false) }
+    var showCommitmentDialog by remember { mutableStateOf(false) }
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var planningVersion by remember { mutableIntStateOf(0) }
     var selectedTab by remember { mutableStateOf(0) }
     var movementFilter by remember { mutableStateOf("Todos") }
     var movementQuery by remember { mutableStateOf("") }
@@ -89,7 +93,7 @@ class MainActivity : ComponentActivity() {
     val syncExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-            writer.write(syncBundleJson(CapturedEventStore(activity).recent(10_000)))
+            writer.write(syncBundleJson(CapturedEventStore(activity).recent(10_000), PlanningStore(activity).exportJson()))
         }
         syncStatus = "Paquete de sincronización exportado."
     }
@@ -122,16 +126,21 @@ class MainActivity : ComponentActivity() {
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
     val total = monthExpenses.sumOf { it.amount ?: 0 }
-    val categoryTotals = listOf("alimentacion", "transporte", "suscripciones", "salud", "otros")
+    val categoryTotals = listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros")
         .map { category -> category to monthExpenses.filter { it.category == category }.sumOf { it.amount ?: 0 } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
+    val planningStore = remember { PlanningStore(activity) }
+    val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
+    val activeCommitments = planningStore.commitments().filter { it.isActive }
+    val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
+    val monthlyGoal = planningStore.monthlyGoal()
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item {
                     TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
-                        listOf("Resumen", "Movimientos", "Captura", "Cuenta").forEachIndexed { index, label ->
+                        listOf("Resumen", "Movimientos", "Captura", "Planificación", "Cuenta").forEachIndexed { index, label ->
                             Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(label, fontSize = 11.sp) })
                         }
                     }
@@ -356,6 +365,41 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 3) {
                     item {
+                        Text("Planificación mensual${if (planningVersion >= 0) "" else ""}", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("La vista que faltaba para llevar tu método de Excel: ingresos, compromisos y cuotas.", color = Color.Gray, fontSize = 13.sp)
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Resumen planificado", color = Ink, fontWeight = FontWeight.Bold)
+                                Text("Ingresos registrados: ${clp(plannedIncomeTotal)}", color = Green)
+                                Text("Compromisos activos: ${clp(plannedCommitmentTotal)}", color = Color(0xFF9A6500))
+                                Text("Disponible estimado: ${clp(plannedIncomeTotal - plannedCommitmentTotal)}", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                        OutlinedButton(onClick = { showIncomeDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar ingreso") }
+                        OutlinedButton(onClick = { showCommitmentDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar compromiso o cuota") }
+                        OutlinedButton(onClick = { showGoalDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar meta mensual") }
+                        if (planningStore.incomes().isNotEmpty()) {
+                            Text("Ingresos", color = Ink, fontWeight = FontWeight.Bold)
+                            planningStore.incomes().forEach { income ->
+                                PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente") {
+                                    planningStore.deleteIncome(income.id); planningVersion++
+                                }
+                            }
+                        }
+                        if (activeCommitments.isNotEmpty()) {
+                            Text("Compromisos activos", color = Ink, fontWeight = FontWeight.Bold)
+                            activeCommitments.forEach { commitment ->
+                                val installment = if (commitment.hasInstallments) "Cuota ${commitment.currentInstallment}/${commitment.totalInstallments}" else "Recurrente"
+                                PlanningRow("${commitment.name} · ${clp(commitment.amount)}", installment) {
+                                    planningStore.deleteCommitment(commitment.id); planningVersion++
+                                }
+                            }
+                        }
+                    }
+                }
+                if (selectedTab == 4) {
+                    item {
                         Text("Cuenta y respaldo", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text(if (cloudAccountLabel == "Sin cuenta cloud") "Conecta una cuenta cloud para recuperar tus movimientos." else "Cuenta activa: $cloudAccountLabel", color = Color.Gray, fontSize = 13.sp)
                         OutlinedButton(onClick = { showCloudAccountDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar cuenta cloud") }
@@ -416,7 +460,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("alimentacion" to "Alim.", "transporte" to "Transp.", "salud" to "Salud", "otros" to "Otros").forEach { (value, label) ->
+                            listOf("servicios" to "Servicios", "casa" to "Casa", "supermercado" to "Supermercado", "salidas" to "Salidas", "auto" to "Auto", "otros" to "Otros").forEach { (value, label) ->
                                 FilterChip(
                                     selected = manualCategory == value,
                                     onClick = { manualCategory = value },
@@ -535,13 +579,100 @@ class MainActivity : ComponentActivity() {
                 dismissButton = { TextButton(onClick = { showBudgetDialog = false }) { Text("Cancelar") } }
             )
         }
+        if (showGoalDialog) {
+            var goalInput by remember { mutableStateOf(monthlyGoal.toString()) }
+            var goalError by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showGoalDialog = false },
+                title = { Text("Meta mensual") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = goalInput, onValueChange = { goalInput = it }, label = { Text("Monto objetivo en pesos") }, singleLine = true)
+                        Text("Puede ser una meta de ahorro, ingreso o saldo disponible. Brújula no la interpretará por ti.", color = Color.Gray, fontSize = 12.sp)
+                        goalError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = parseClpInput(goalInput)
+                        if (value == null || value < 0) goalError = "Ingresa un monto válido."
+                        else { planningStore.setMonthlyGoal(value); planningVersion++; showGoalDialog = false }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showGoalDialog = false }) { Text("Cancelar") } }
+            )
+        }
+        if (showIncomeDialog) {
+            var name by remember { mutableStateOf("") }
+            var amountInput by remember { mutableStateOf("") }
+            var error by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showIncomeDialog = false },
+                title = { Text("Agregar ingreso") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre: sueldo, DAP, Integra…") }, singleLine = true)
+                        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto mensual") }, singleLine = true)
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val amount = parseClpInput(amountInput)
+                        if (name.isBlank() || amount == null || amount <= 0) error = "Completa nombre y monto."
+                        else { planningStore.addIncome(name, amount); planningVersion++; showIncomeDialog = false }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showIncomeDialog = false }) { Text("Cancelar") } }
+            )
+        }
+        if (showCommitmentDialog) {
+            var name by remember { mutableStateOf("") }
+            var amountInput by remember { mutableStateOf("") }
+            var currentInput by remember { mutableStateOf("") }
+            var totalInput by remember { mutableStateOf("") }
+            var category by remember { mutableStateOf("servicios") }
+            var error by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showCommitmentDialog = false },
+                title = { Text("Compromiso o cuota") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Ej.: PC, diplomado, mamá") }, singleLine = true)
+                        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto de la cuota") }, singleLine = true)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedTextField(value = currentInput, onValueChange = { currentInput = it }, label = { Text("Cuota actual") }, singleLine = true, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = totalInput, onValueChange = { totalInput = it }, label = { Text("Total cuotas") }, singleLine = true, modifier = Modifier.weight(1f))
+                        }
+                        Text("Categoría", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("servicios", "casa", "supermercado", "salidas", "auto").forEach { value ->
+                                FilterChip(selected = category == value, onClick = { category = value }, label = { Text(value.replaceFirstChar { it.uppercase() }) })
+                            }
+                        }
+                        Text("Deja las cuotas vacías si es un gasto recurrente sin término.", color = Color.Gray, fontSize = 12.sp)
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val amount = parseClpInput(amountInput)
+                        val current = currentInput.toIntOrNull() ?: 0
+                        val total = totalInput.toIntOrNull() ?: 0
+                        if (name.isBlank() || amount == null || amount <= 0 || current < 0 || total < 0 || (total > 0 && current > total)) error = "Revisa nombre, monto y cuotas."
+                        else { planningStore.addCommitment(name, amount, current, total, category); planningVersion++; showCommitmentDialog = false }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showCommitmentDialog = false }) { Text("Cancelar") } }
+            )
+        }
         editingEvent?.let { event ->
             AlertDialog(
                 onDismissRequest = { editingEvent = null },
                 title = { Text("Categoría del movimiento") },
                 text = {
                     Column {
-                        listOf("alimentacion", "transporte", "suscripciones", "salud", "otros").forEach { category ->
+                        listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros").forEach { category ->
                             TextButton(onClick = {
                                 CapturedEventStore(activity).updateCategory(event.id, category)
                                 captured = CapturedEventStore(activity).recent()
@@ -557,6 +688,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+}
+
+@Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
+    Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = Color.Gray, fontSize = 12.sp)
+            }
+            TextButton(onClick = onDelete) { Text("Quitar") }
+        }
+    }
 }
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
@@ -611,7 +754,7 @@ private fun Long.isCurrentMonth(): Boolean {
 }
 
 
-private fun syncBundleJson(events: List<CapturedEvent>): String = JSONObject().apply {
+private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
     put("schema_version", 1)
     put("generated_at", System.currentTimeMillis())
     put("events", JSONArray().apply {
@@ -630,6 +773,7 @@ private fun syncBundleJson(events: List<CapturedEvent>): String = JSONObject().a
             })
         }
     })
+    planning?.let { put("planning", it) }
 }.toString(2)
 
 private fun importSyncBundle(activity: MainActivity, json: String): Int {
@@ -637,7 +781,7 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
     if (root.optInt("schema_version", -1) != 1) return 0
     val events = root.optJSONArray("events") ?: return 0
     val store = CapturedEventStore(activity)
-    return (0 until events.length()).count { index ->
+    val importedEvents = (0 until events.length()).count { index ->
         val event = events.optJSONObject(index) ?: return@count false
         val fingerprint = event.optString("fingerprint").takeIf { it.isNotBlank() } ?: return@count false
         val status = event.optString("status", "captured")
@@ -655,6 +799,8 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
             status = status
         )
     }
+    PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
+    return importedEvents
 }
 private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
     appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
@@ -692,10 +838,15 @@ private fun parseClpInput(value: String): Int? =
     value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
 
 private fun CapturedEvent.categoryLabel() = when (category) {
-    "alimentacion" -> "ALIMENTACION"
-    "transporte" -> "TRANSPORTE"
-    "suscripciones" -> "SUSCRIPCIONES"
-    "salud" -> "SALUD"
+    "servicios" -> "SERVICIOS"
+    "casa" -> "CASA"
+    "supermercado" -> "SUPERMERCADO"
+    "salidas" -> "SALIDAS"
+    "auto" -> "AUTO"
+    "alimentacion" -> "SUPERMERCADO"
+    "transporte" -> "SALIDAS"
+    "suscripciones" -> "SERVICIOS"
+    "salud" -> "CASA"
     else -> "OTROS"
 }
 

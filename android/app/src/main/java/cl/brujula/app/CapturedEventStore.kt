@@ -376,10 +376,11 @@ private fun classifyMovement(text: String): String {
 private fun classifyCategory(text: String): String {
     val normalized = text.lowercase(Locale.ROOT)
     return when {
-        listOf("jumbo", "lider", "unimarc", "supermercado", "mercado").any(normalized::contains) -> "alimentacion"
-        listOf("uber", "recorrido", "taxi", "cabify", "transantiago").any(normalized::contains) -> "transporte"
-        listOf("netflix", "spotify", "youtube", "suscripcion", "suscripción").any(normalized::contains) -> "suscripciones"
-        listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica").any(normalized::contains) -> "salud"
+        listOf("jumbo", "lider", "unimarc", "supermercado", "mercado").any(normalized::contains) -> "supermercado"
+        listOf("uber", "recorrido", "taxi", "cabify", "transantiago", "salida").any(normalized::contains) -> "salidas"
+        listOf("netflix", "spotify", "youtube", "suscripcion", "suscripción", "verisure", "luz", "agua", "internet").any(normalized::contains) -> "servicios"
+        listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica", "casa", "arriendo").any(normalized::contains) -> "casa"
+        listOf("gasolina", "bencina", "copec", "shell", "auto", "estacionamiento").any(normalized::contains) -> "auto"
         else -> "otros"
     }
 }
