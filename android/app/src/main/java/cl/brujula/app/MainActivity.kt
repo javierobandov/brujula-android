@@ -27,6 +27,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
@@ -72,6 +74,21 @@ class MainActivity : ComponentActivity() {
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
             writer.write(capturedCsv(CapturedEventStore(activity).recent(10_000)))
         }
+    }
+    var syncStatus by remember { mutableStateOf<String?>(null) }
+    val syncExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+            writer.write(syncBundleJson(CapturedEventStore(activity).recent(10_000)))
+        }
+        syncStatus = "Paquete de sincronización exportado."
+    }
+    val syncImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val json = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val imported = importSyncBundle(activity, json)
+        captured = CapturedEventStore(activity).recent()
+        syncStatus = if (imported == 0) "No se encontraron movimientos nuevos en el paquete." else "Se incorporaron $imported movimientos nuevos."
     }
     LaunchedEffect(Unit) {
         while (true) {
@@ -132,6 +149,15 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { exportLauncher.launch("brujula-respaldo-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.csv") }, modifier = Modifier.fillMaxWidth()) {
                         Text("Exportar respaldo CSV completo")
                     }
+                    OutlinedButton(onClick = { syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Exportar paquete de sincronización")
+                    }
+                    OutlinedButton(onClick = {
+                        syncImportLauncher.launch(arrayOf("application/json", "text/json", "text/*"))
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Importar paquete de sincronización")
+                    }
+                    syncStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
                     OutlinedButton(onClick = {
                         importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*"))
                     }, modifier = Modifier.fillMaxWidth()) {
@@ -398,6 +424,52 @@ private fun Long.isCurrentMonth(): Boolean {
     return event.get(Calendar.YEAR) == now.get(Calendar.YEAR) && event.get(Calendar.MONTH) == now.get(Calendar.MONTH)
 }
 
+
+private fun syncBundleJson(events: List<CapturedEvent>): String = JSONObject().apply {
+    put("schema_version", 1)
+    put("generated_at", System.currentTimeMillis())
+    put("events", JSONArray().apply {
+        events.forEach { event ->
+            put(JSONObject().apply {
+                put("fingerprint", event.fingerprint)
+                put("received_at", event.receivedAt)
+                put("source_package", event.sourcePackage)
+                put("raw_text", event.rawText)
+                put("amount", event.amount ?: JSONObject.NULL)
+                put("merchant", event.merchant ?: JSONObject.NULL)
+                put("movement_type", event.movementType)
+                put("category", event.category)
+                put("payment_source", event.paymentSource)
+                put("status", event.status)
+            })
+        }
+    })
+}.toString(2)
+
+private fun importSyncBundle(activity: MainActivity, json: String): Int {
+    val root = runCatching { JSONObject(json) }.getOrNull() ?: return 0
+    if (root.optInt("schema_version", -1) != 1) return 0
+    val events = root.optJSONArray("events") ?: return 0
+    val store = CapturedEventStore(activity)
+    return (0 until events.length()).count { index ->
+        val event = events.optJSONObject(index) ?: return@count false
+        val fingerprint = event.optString("fingerprint").takeIf { it.isNotBlank() } ?: return@count false
+        val status = event.optString("status", "captured")
+        if (status == "demo" || status == "ignored") return@count false
+        store.insertSyncEvent(
+            fingerprint = fingerprint,
+            receivedAt = event.optLong("received_at", System.currentTimeMillis()),
+            sourcePackage = event.optString("source_package", "cl.brujula.app.sync"),
+            rawText = event.optString("raw_text"),
+            amount = if (event.isNull("amount")) null else event.optInt("amount"),
+            merchant = if (event.isNull("merchant")) null else event.optString("merchant"),
+            movementType = event.optString("movement_type", "expense"),
+            category = event.optString("category", "otros"),
+            paymentSource = event.optString("payment_source", "notificacion"),
+            status = status
+        )
+    }
+}
 private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
     appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
     events.forEach { event ->
