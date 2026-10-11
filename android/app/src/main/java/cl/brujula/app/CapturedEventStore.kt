@@ -9,6 +9,7 @@ import java.util.Locale
 
 data class CapturedEvent(
     val id: Long,
+    val fingerprint: String,
     val receivedAt: Long,
     val sourcePackage: String,
     val rawText: String,
@@ -115,6 +116,33 @@ class CapturedEventStore(context: Context) {
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
 
+    fun insertSyncEvent(
+        fingerprint: String,
+        receivedAt: Long,
+        sourcePackage: String,
+        rawText: String,
+        amount: Int?,
+        merchant: String?,
+        movementType: String,
+        category: String,
+        paymentSource: String,
+        status: String
+    ): Boolean {
+        val values = ContentValues().apply {
+            put("fingerprint", fingerprint)
+            put("received_at", receivedAt)
+            put("source_package", sourcePackage)
+            put("raw_text", rawText)
+            put("amount", amount)
+            put("merchant", merchant)
+            put("movement_type", movementType)
+            put("category", category)
+            put("category_manual", 1)
+            put("payment_source", paymentSource)
+            put("status", status)
+        }
+        return helper.writableDatabase.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
     fun insertStatementEvent(
         receivedAt: Long,
         rawText: String,
@@ -215,6 +243,7 @@ class CapturedEventStore(context: Context) {
             while (cursor.moveToNext()) {
                 result += CapturedEvent(
                     id = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
+                    fingerprint = cursor.getString(cursor.getColumnIndexOrThrow("fingerprint")),
                     receivedAt = cursor.getLong(cursor.getColumnIndexOrThrow("received_at")),
                     sourcePackage = cursor.getString(cursor.getColumnIndexOrThrow("source_package")),
                     rawText = cursor.getString(cursor.getColumnIndexOrThrow("raw_text")),
