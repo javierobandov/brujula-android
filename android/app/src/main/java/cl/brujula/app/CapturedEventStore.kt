@@ -365,6 +365,18 @@ private fun classifyPaymentSource(text: String): String {
     }
 }
 
+private fun merchantsOverlap(left: String, right: String): Boolean {
+    val normalize = { value: String ->
+        value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9áéíóúñ ]"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+    }
+    val a = normalize(left)
+    val b = normalize(right)
+    if (a.isBlank() || b.isBlank()) return false
+    return a.contains(b) || b.contains(a) ||
+        a.split(" ").filter { it.length >= 4 }.any { token -> b.contains(token) }
+}
+
 private fun sha256(value: String) = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray())
     .joinToString("") { "%02x".format(it) }
