@@ -136,6 +136,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        editingEvent?.let { event ->
+            AlertDialog(
+                onDismissRequest = { editingEvent = null },
+                title = { Text("Categoría del movimiento") },
+                text = {
+                    Column {
+                        listOf("alimentacion", "transporte", "suscripciones", "salud", "otros").forEach { category ->
+                            TextButton(onClick = {
+                                CapturedEventStore(activity).updateCategory(event.id, category)
+                                captured = CapturedEventStore(activity).recent()
+                                editingEvent = null
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(category.replaceFirstChar { it.uppercase() })
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
+            )
+        }
     }
 }
 
@@ -185,27 +205,6 @@ private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
             event.sourcePackage,
             event.rawText
         ).joinToString(",") { csvCell(it) })
-        editingEvent?.let { event ->
-            AlertDialog(
-                onDismissRequest = { editingEvent = null },
-                title = { Text("Categoría del movimiento") },
-                text = {
-                    Column {
-                        listOf("alimentacion", "transporte", "suscripciones", "salud", "otros").forEach { category ->
-                            TextButton(onClick = {
-                                CapturedEventStore(activity).updateCategory(event.id, category)
-                                captured = CapturedEventStore(activity).recent()
-                                editingEvent = null
-                            }, modifier = Modifier.fillMaxWidth()) {
-                                Text(category.replaceFirstChar { it.uppercase() })
-                            }
-                        }
-                    }
-                },
-                confirmButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
-            )
-        }
-
     }
 }
 
