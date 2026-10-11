@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
+import java.util.Locale
 
 data class CapturedEvent(
     val id: Long,
@@ -13,6 +14,7 @@ data class CapturedEvent(
     val rawText: String,
     val amount: Int?,
     val merchant: String?,
+    val movementType: String,
     val status: String
 )
 
@@ -29,6 +31,7 @@ class CapturedEventStore(context: Context) {
             put("raw_text", rawText)
             put("amount", parseAmount(rawText))
             put("merchant", parseMerchant(rawText))
+            put("movement_type", classifyMovement(rawText))
             put("status", status)
         }
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
@@ -54,6 +57,7 @@ class CapturedEventStore(context: Context) {
                     rawText = cursor.getString(cursor.getColumnIndexOrThrow("raw_text")),
                     amount = cursor.getIntOrNull("amount"),
                     merchant = cursor.getStringOrNull("merchant"),
+                    movementType = cursor.getStringOrNull("movement_type") ?: "expense",
                     status = cursor.getString(cursor.getColumnIndexOrThrow("status"))
                 )
             }
@@ -61,7 +65,7 @@ class CapturedEventStore(context: Context) {
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 2) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 3) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -72,6 +76,7 @@ class CapturedEventStore(context: Context) {
                     raw_text TEXT NOT NULL,
                     amount INTEGER,
                     merchant TEXT,
+                    movement_type TEXT NOT NULL DEFAULT 'expense',
                     status TEXT NOT NULL
                 )""".trimIndent()
             )
@@ -86,6 +91,17 @@ class CapturedEventStore(context: Context) {
                         val values = ContentValues().apply {
                             put("amount", parseAmount(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
                             put("merchant", parseMerchant(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
+                        }
+                        db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
+                    }
+                }
+            }
+            if (oldVersion < 3) {
+                db.execSQL("ALTER TABLE events ADD COLUMN movement_type TEXT NOT NULL DEFAULT 'expense'")
+                db.query("events", arrayOf("id", "raw_text"), null, null, null, null, null).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val values = ContentValues().apply {
+                            put("movement_type", classifyMovement(cursor.getString(cursor.getColumnIndexOrThrow("raw_text"))))
                         }
                         db.update("events", values, "id = ?", arrayOf(cursor.getLong(cursor.getColumnIndexOrThrow("id")).toString()))
                     }
@@ -123,6 +139,17 @@ private fun parseMerchant(text: String): String? {
         ?.take(160)
 }
 
-private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+
+private fun classifyMovement(text: String): String {
+    val normalized = text.lowercase(Locale.ROOT)
+    return when {
+        Regex("\\b(pago|pagaste|pagó)\\b.*\\b(tarjeta|tc|cr[eé]dito)\\b|\\b(tarjeta|tc|cr[eé]dito)\\b.*\\b(pago|pagaste|pagó)\\b").containsMatchIn(normalized) -> "card_payment"
+        listOf("devolución", "devolucion", "reembolso", "reversa", "reverso", "devuelto").any(normalized::contains) -> "refund"
+        listOf("transferencia", "traspaso", "depósito", "deposito").any(normalized::contains) -> "transfer"
+        else -> "expense"
+    }
+}
+
+private fun sha256(value: String) = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray())
     .joinToString("") { "%02x".format(it) }
