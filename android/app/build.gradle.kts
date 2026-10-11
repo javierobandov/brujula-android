@@ -1,7 +1,7 @@
 val firebaseApiKey = providers.gradleProperty("BRUJULA_FIREBASE_API_KEY").orNull ?: System.getenv("BRUJULA_FIREBASE_API_KEY") ?: ""
 val firebaseAppId = providers.gradleProperty("BRUJULA_FIREBASE_APP_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_APP_ID") ?: ""
 val firebaseProjectId = providers.gradleProperty("BRUJULA_FIREBASE_PROJECT_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_PROJECT_ID") ?: ""
-fun quotedBuildConfig(value: String) = "\\\"${value.replace("\\\\", "\\\\\\\\").replace("\\\"", "\\\\\\\"")}\\\""
+fun quotedBuildConfig(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 plugins {
     id("com.android.application")
