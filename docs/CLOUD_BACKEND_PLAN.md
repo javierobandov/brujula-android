@@ -1,0 +1,68 @@
+# Plan de backend cloud privado
+
+## Decisión provisional
+
+Usar Firebase en el plan Spark para el primer backend cloud:
+
+- Firebase Authentication con correo y contraseña.
+- Cloud Firestore como libro central.
+- Android sincroniza directamente mediante el SDK oficial.
+- Las reglas de Firestore limitan cada documento al usuario autenticado.
+- No se almacenan credenciales bancarias.
+- No se requiere un computador, NAS ni servidor personal encendido.
+
+Firebase Spark ofrece cuotas gratuitas para Firestore y Authentication sin exigir método de pago para comenzar. El sistema debe manejar el agotamiento de cuota y mostrar un estado de sincronización pendiente; nunca asumir que una escritura remota siempre tuvo éxito.
+
+## Modelo cloud v1
+
+Colección por usuario:
+
+`users/{uid}/events/{fingerprint}`
+
+Campos mínimos:
+
+- `fingerprint`: identidad estable e idempotente.
+- `received_at`: fecha de captura.
+- `source_package`: origen técnico.
+- `raw_text`: evidencia original.
+- `amount`, `merchant`.
+- `movement_type`, `category`, `payment_source`.
+- `status`.
+- `updated_at`.
+- `schema_version`.
+
+La cartola oficial debe conservar mayor confianza que una notificación. La sincronización no debe sobrescribir una revisión humana ni cambiar un estado conciliado sin registrar una nueva versión.
+
+## Seguridad mínima
+
+Las reglas deben impedir:
+
+- lectura sin autenticación;
+- acceso a otro `uid`;
+- escritura de documentos cuyo identificador no coincida con el fingerprint;
+- modificación del fingerprint después de creado;
+- eliminación desde la app sin una operación explícita de recuperación.
+
+La app debe guardar sólo la sesión de Firebase, nunca credenciales bancarias. La configuración pública de Firebase no es un secreto, pero las reglas sí deben tratarse como una barrera de seguridad.
+
+## Orden de implementación
+
+1. Crear el proyecto Firebase del usuario en Spark.
+2. Registrar la aplicación Android `cl.brujula.app`.
+3. Incorporar `google-services.json` al entorno de compilación sin publicarlo en el repositorio.
+4. Añadir Firebase BoM, Authentication y Firestore.
+5. Crear pantalla de inicio/cierre de sesión.
+6. Sincronizar por fingerprint desde el paquete JSON ya implementado.
+7. Descargar cambios remotos por cursor y aplicar conflictos con precedencia de fuente.
+8. Probar restauración en un segundo dispositivo.
+9. Publicar una release sólo después de validar reglas y recuperación.
+
+## Límites y contingencia
+
+Si Firebase modifica sus cuotas o el proyecto alcanza una cuota gratuita, la app debe continuar en modo local-first y dejar los eventos en una cola de sincronización pendiente. El paquete JSON seguirá siendo la vía de exportación y migración.
+
+Fuentes de referencia:
+
+- https://firebase.google.com/docs/projects/billing/firebase-pricing-plans
+- https://firebase.google.com/docs/firestore/pricing
+- https://firebase.google.com/docs/auth
