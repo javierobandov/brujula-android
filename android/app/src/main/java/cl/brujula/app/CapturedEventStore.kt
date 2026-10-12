@@ -128,6 +128,22 @@ class CapturedEventStore(context: Context) {
         paymentSource: String,
         status: String
     ): Boolean {
+        val db = helper.writableDatabase
+        db.query("events", arrayOf("id", "status"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor ->
+            if (cursor.moveToFirst()) {
+                val localId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                val localStatus = cursor.getString(cursor.getColumnIndexOrThrow("status"))
+                if (statusRank(status) > statusRank(localStatus)) {
+                    db.update("events", ContentValues().apply {
+                        put("status", status)
+                        put("category", category)
+                        put("payment_source", paymentSource)
+                        put("movement_type", movementType)
+                    }, "id = ?", arrayOf(localId.toString()))
+                }
+                return false
+            }
+        }
         val values = ContentValues().apply {
             put("fingerprint", fingerprint)
             put("received_at", receivedAt)
@@ -141,7 +157,7 @@ class CapturedEventStore(context: Context) {
             put("payment_source", paymentSource)
             put("status", status)
         }
-        return helper.writableDatabase.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+        return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
     fun insertStatementEvent(
         receivedAt: Long,
@@ -169,8 +185,8 @@ class CapturedEventStore(context: Context) {
 
     fun reconcileStatements(): Int {
         val db = helper.writableDatabase
-        val statementIds = mutableListOf<Long>()
         val statements = mutableListOf<Triple<Long, Long, String>>()
+        val usedCapturedIds = mutableSetOf<Long>()
         db.query(
             "events",
             arrayOf("id", "received_at", "amount", "merchant"),
@@ -204,20 +220,31 @@ class CapturedEventStore(context: Context) {
                 null, null, "received_at ASC"
             ).use { cursor ->
                 while (cursor.moveToNext() && matchedId == null) {
+                    val candidateId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                    if (candidateId in usedCapturedIds) continue
                     val candidateMerchant = cursor.getStringOrNull("merchant").orEmpty()
                     val days = kotlin.math.abs(cursor.getLong(cursor.getColumnIndexOrThrow("received_at")) - statementDate) / 86_400_000L
                     if (days <= 7 && merchantsOverlap(merchant, candidateMerchant)) {
-                        matchedId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                        matchedId = candidateId
                     }
                 }
             }
             matchedId?.let { eventId ->
+                usedCapturedIds += eventId
                 db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(eventId.toString()))
                 db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(statementId.toString()))
                 reconciled++
             }
         }
         return reconciled
+    }
+
+    private fun statusRank(status: String): Int = when (status) {
+        "reconciled" -> 4
+        "confirmed" -> 3
+        "requires_review" -> 2
+        "captured" -> 1
+        else -> 0
     }
 
     fun updateCategory(id: Long, category: String): Int {
