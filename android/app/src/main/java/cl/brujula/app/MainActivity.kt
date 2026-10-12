@@ -486,6 +486,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
             NavigationBar(containerColor = Color.White) {
                 listOf(0 to "Resumen", 1 to "Movimientos", 3 to "Planificación", 4 to "Cuenta").forEach { (tab, label) ->
                     NavigationBarItem(
