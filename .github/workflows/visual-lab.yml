@@ -45,21 +45,21 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
           disable-animations: true
           script: |
-            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop cl.brujula.app
-            adb shell monkey -p cl.brujula.app 1
+            timeout 120s adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            timeout 30s adb shell am force-stop cl.brujula.app || true
+            timeout 30s adb shell monkey -p cl.brujula.app 1
             sleep 3
             mkdir -p visual-lab
-            adb exec-out screencap -p > visual-lab/01-resumen.png
-            adb shell input tap 157 790
+            timeout 30s adb exec-out screencap -p > visual-lab/01-resumen.png
+            timeout 10s adb shell input tap 157 790
             sleep 1
-            adb exec-out screencap -p > visual-lab/02-movimientos.png
-            adb shell input tap 262 790
+            timeout 30s adb exec-out screencap -p > visual-lab/02-movimientos.png
+            timeout 10s adb shell input tap 262 790
             sleep 1
-            adb exec-out screencap -p > visual-lab/03-planificacion.png
-            adb shell input tap 367 790
+            timeout 30s adb exec-out screencap -p > visual-lab/03-planificacion.png
+            timeout 10s adb shell input tap 367 790
             sleep 1
-            adb exec-out screencap -p > visual-lab/04-cuenta.png
+            timeout 30s adb exec-out screencap -p > visual-lab/04-cuenta.png
 
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4
