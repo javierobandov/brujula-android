@@ -28,6 +28,8 @@ data class Commitment(
 
 data class MonthlyProjection(val label: String, val commitmentTotal: Int, val activeCommitments: Int)
 
+data class CategoryLimit(val category: String, val amount: Int)
+
 /** Local-first planning data. It deliberately stores no bank credentials or notification text. */
 class PlanningStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("brujula_planning", Context.MODE_PRIVATE)
@@ -55,6 +57,18 @@ class PlanningStore(context: Context) {
 
     fun monthlyGoal(): Int = prefs.getInt("monthly_goal", 0)
     fun setMonthlyGoal(value: Int) { prefs.edit().putInt("monthly_goal", value.coerceAtLeast(0)).apply() }
+
+    fun categoryLimits(): List<CategoryLimit> = readArray("category_limits") { item ->
+        CategoryLimit(item.optString("category", "otros"), item.optInt("amount", 0))
+    }.filter { it.amount > 0 }
+
+    fun categoryLimit(category: String): Int = categoryLimits().firstOrNull { it.category == category }?.amount ?: 0
+
+    fun setCategoryLimit(category: String, amount: Int) {
+        val values = categoryLimits().filterNot { it.category == category }.toMutableList()
+        if (amount > 0) values += CategoryLimit(category, amount)
+        writeArray("category_limits", JSONArray().apply { values.forEach { put(JSONObject().apply { put("category", it.category); put("amount", it.amount) }) } })
+    }
 
     fun projections(months: Int = 6): List<MonthlyProjection> {
         val calendar = java.util.Calendar.getInstance()
@@ -102,6 +116,7 @@ class PlanningStore(context: Context) {
     fun exportJson(): JSONObject = JSONObject().apply {
         put("schema_version", 1)
         put("monthly_goal", monthlyGoal())
+        put("category_limits", JSONArray().apply { categoryLimits().forEach { put(JSONObject().apply { put("category", it.category); put("amount", it.amount) }) } })
         put("incomes", JSONArray().apply { this@PlanningStore.incomes().forEach { put(it.toJson()) } })
         put("commitments", JSONArray().apply { this@PlanningStore.commitments().forEach { put(it.toJson()) } })
     }
@@ -126,6 +141,10 @@ class PlanningStore(context: Context) {
             if (value.id.isNotBlank() && value.id !in existingCommitmentIds) { newCommitments += value; imported++ }
         }
         if (root.has("monthly_goal") && monthlyGoal() == 0) setMonthlyGoal(root.optInt("monthly_goal"))
+        val limits = root.optJSONArray("category_limits")
+        if (limits != null && categoryLimits().isEmpty()) {
+            writeArray("category_limits", limits)
+        }
         writeArray("incomes", JSONArray().apply { newIncomes.forEach { put(it.toJson()) } })
         writeArray("commitments", JSONArray().apply { newCommitments.forEach { put(it.toJson()) } })
         return imported
@@ -134,6 +153,7 @@ class PlanningStore(context: Context) {
     fun cloudData(): Map<String, Any> = mapOf(
         "schema_version" to 1,
         "monthly_goal" to monthlyGoal(),
+        "category_limits" to categoryLimits().map { mapOf("category" to it.category, "amount" to it.amount) },
         "incomes" to incomes().map { mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "recurring" to it.recurring) },
         "commitments" to commitments().map {
             mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "current_installment" to it.currentInstallment,

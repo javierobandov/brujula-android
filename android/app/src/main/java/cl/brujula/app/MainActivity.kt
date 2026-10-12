@@ -56,6 +56,8 @@ private val Ink = Color(0xFF1F2A27)
 private val Mint = Color(0xFFEAF6F1)
 private val Lavender = Color(0xFFF0E7FF)
 private val Muted = Color(0xFF6D7773)
+private val BudgetCategories = listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "deudas", "otros")
+private val CategoryColors = listOf(Color(0xFF237F6D), Color(0xFF3E8EDE), Color(0xFFF0A43C), Color(0xFFB665C3), Color(0xFF5C6BC0), Color(0xFFE57373), Color(0xFF7CB342), Color(0xFF8D6E63), Color(0xFF90A4AE))
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { BrujulaApp(this) } }
@@ -70,7 +72,7 @@ class MainActivity : ComponentActivity() {
     val firebaseSync = remember { FirebaseCloudSync(activity) }
     var cloudAccountLabel by remember { mutableStateOf(firebaseSync.currentUserEmail() ?: "Sin cuenta cloud") }
     var showCloudAccountDialog by remember { mutableStateOf(false) }
-    var captured by remember { mutableStateOf(CapturedEventStore(activity).recent()) }
+    var captured by remember { mutableStateOf(CapturedEventStore(activity).recent(10_000)) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
@@ -79,6 +81,7 @@ class MainActivity : ComponentActivity() {
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showCommitmentDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
+    var showCategoryLimitDialog by remember { mutableStateOf(false) }
     var planningVersion by remember { mutableIntStateOf(0) }
     var selectedTab by remember { mutableStateOf(0) }
     var movementFilter by remember { mutableStateOf("Todos") }
@@ -90,14 +93,14 @@ class MainActivity : ComponentActivity() {
         val store = CapturedEventStore(activity)
         val imported = importStatementCsv(activity, csv)
         val reconciled = store.reconcileStatements()
-        captured = store.recent()
+        captured = store.recent(10_000)
         statementStatus = if (imported == 0) "No se reconocieron movimientos de cartola." else "Cartola: $imported movimientos importados; $reconciled conciliados automáticamente."
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importCapturedCsv(activity, csv)
-        captured = CapturedEventStore(activity).recent()
+        captured = CapturedEventStore(activity).recent(10_000)
         importStatus = if (imported == 0) "No se encontraron movimientos nuevos en el CSV." else "Se importaron $imported movimientos; quedan pendientes de revisión."
     }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -118,20 +121,20 @@ class MainActivity : ComponentActivity() {
         uri ?: return@rememberLauncherForActivityResult
         val json = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importSyncBundle(activity, json)
-        captured = CapturedEventStore(activity).recent()
+        captured = CapturedEventStore(activity).recent(10_000)
         syncStatus = if (imported == 0) "No se encontraron movimientos nuevos en el paquete." else "Se incorporaron $imported movimientos nuevos."
     }
     LaunchedEffect(Unit) {
         while (true) {
             delay(15_000L)
-            captured = CapturedEventStore(activity).recent()
+            captured = CapturedEventStore(activity).recent(10_000)
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                captured = CapturedEventStore(activity).recent()
+                captured = CapturedEventStore(activity).recent(10_000)
                 updateChecker.resumePendingInstall { updateStatus = it }
             }
         }
@@ -143,21 +146,30 @@ class MainActivity : ComponentActivity() {
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
+    val previousMonthExpenses = expenses.filter { it.receivedAt.isPreviousMonth() }
     val monthRefunds = realCaptured.filter { it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
     val total = monthExpenses.sumOf { it.amount ?: 0 }
+    val previousTotal = previousMonthExpenses.sumOf { it.amount ?: 0 }
     val refunds = monthRefunds.sumOf { it.amount ?: 0 }
     val netTotal = (total - refunds).coerceAtLeast(0)
-    val categoryTotals = listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros")
-        .map { category -> category to monthExpenses.filter { it.category == category }.sumOf { it.amount ?: 0 } }
+    val planningStore = remember { PlanningStore(activity) }
+    val categoryTotals = BudgetCategories
+        .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.amount ?: 0 } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
-    val planningStore = remember { PlanningStore(activity) }
+    val categoryLimits = planningStore.categoryLimits().associate { it.category to it.amount }
+    val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.amount ?: 0 }
     val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
     val monthlyBudget = plannedIncomeTotal
     val activeCommitments = planningStore.commitments().filter { it.isActive }
     val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
     val monthlyGoal = planningStore.monthlyGoal()
     val plannedAvailable = plannedIncomeTotal - plannedCommitmentTotal - monthlyGoal
+    val realAvailable = plannedAvailable - netTotal
+    val daysElapsed = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+    val daysInMonth = Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
+    val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
+    val dailySafeAmount = if (daysElapsed < daysInMonth) (realAvailable.coerceAtLeast(0) / (daysInMonth - daysElapsed).coerceAtLeast(1)) else 0
     val projections = planningStore.projections()
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
@@ -184,29 +196,30 @@ class MainActivity : ComponentActivity() {
                         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Disponible tras gastos", color = Muted, fontSize = 15.sp)
-                                    Text(clp((monthlyBudget - netTotal).coerceAtLeast(0)), color = Ink, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                                    Text("Disponible real", color = Muted, fontSize = 15.sp)
+                                    Text(clp(realAvailable), color = if (realAvailable >= 0) Ink else Color(0xFFB3261E), fontSize = 36.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Box(Modifier.size(78.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(
-                                        progress = { (netTotal.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                                        progress = { (netTotal.toFloat() / plannedAvailable.coerceAtLeast(1)).coerceIn(0f, 1f) },
                                         modifier = Modifier.fillMaxSize(),
                                         color = Green,
                                         trackColor = Color(0xFFCFE5DD),
                                         strokeWidth = 10.dp
                                     )
-                                    Text("${percent(netTotal, monthlyBudget)}%", color = Muted, fontSize = 13.sp)
+                                    Text("${percent(netTotal, plannedAvailable)}%", color = Muted, fontSize = 13.sp)
                                 }
                             }
-                            LinearProgressIndicator(progress = { (netTotal.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = Color(0xFFD0E7DF), trackColor = Color(0xFFCFE5DD))
+                            LinearProgressIndicator(progress = { (netTotal.toFloat() / plannedAvailable.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = if (realAvailable >= 0) Green else Color(0xFFB3261E), trackColor = Color(0xFFE3EEE9))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                                 Column {
                                     Text("Gasto neto del mes", color = Muted, fontSize = 13.sp)
                                     Text(clp(netTotal), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text("${percent(netTotal, monthlyBudget)}% de los ingresos", color = Muted, fontSize = 12.sp)
+                                Text("${percent(netTotal, plannedAvailable)}% del dinero disponible", color = Muted, fontSize = 12.sp)
                             }
-                            Text("Planificado después de compromisos y meta: ${clp(plannedAvailable)}", color = Muted, fontSize = 12.sp)
+                            Text("Ingresos ${clp(plannedIncomeTotal)} · compromisos ${clp(plannedCommitmentTotal)} · meta ${clp(monthlyGoal)}", color = Muted, fontSize = 12.sp)
+                            if (realAvailable < 0) Text("Has superado lo disponible en ${clp(-realAvailable)}.", color = Color(0xFFB3261E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             if (refunds > 0) Text("Devoluciones consideradas: ${clp(refunds)}", color = Green, fontSize = 12.sp)
                         }
                     }
@@ -219,11 +232,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 item {
-                    BreakdownCard(
-                        title = "Dónde se va el dinero",
-                        rows = categoryTotals.map { (category, amount) -> category.replaceFirstChar { it.uppercase() } to amount },
-                        emptyLabel = "Todavía no hay gastos categorizados."
-                    )
+                    CategoryDistributionCard(categoryTotals, netTotal, categoryLimits, uncategorizedTotal)
+                }
+                item {
+                    SpendingPaceCard(netTotal, previousTotal, dailyAverage, dailySafeAmount, realAvailable)
                 }
                 item {
                     BreakdownCard(
@@ -231,6 +243,18 @@ class MainActivity : ComponentActivity() {
                         rows = paymentTotals.map { (source, amount) -> source.replace("_", " ").replaceFirstChar { it.uppercase() } to amount },
                         emptyLabel = "Todavía no hay gastos con medio de pago identificado."
                     )
+                }
+                if (pendingReconciliation > 0 || uncategorizedTotal > 0) {
+                    item {
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5))) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("Hay decisiones pendientes", color = Ink, fontWeight = FontWeight.Bold)
+                                if (pendingReconciliation > 0) Text("$pendingReconciliation movimientos requieren revisión.", color = Muted, fontSize = 12.sp)
+                                if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros y pueden mejorar tu análisis.", color = Muted, fontSize = 12.sp)
+                                TextButton(onClick = { selectedTab = 1 }) { Text("Revisar movimientos", color = Green) }
+                            }
+                        }
+                    }
                 }
                 item {
                     Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
@@ -337,6 +361,28 @@ class MainActivity : ComponentActivity() {
                                 Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Muted)
                                 HorizontalDivider(color = Color(0xFFE5ECE8))
                                 Text("Disponible después de compromisos y meta: ${clp(plannedAvailable)}", color = Ink, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Límites por área", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                        Text("Compara lo planificado con lo que realmente gastas.", color = Muted, fontSize = 12.sp)
+                                    }
+                                    TextButton(onClick = { showCategoryLimitDialog = true }) { Text("Configurar", color = Green) }
+                                }
+                                val limitRows = BudgetCategories.map { category ->
+                                    val spent = categoryTotals.firstOrNull { it.first == category }?.second ?: 0
+                                    category to (spent to (categoryLimits[category] ?: 0))
+                                }.filter { it.second.first > 0 || it.second.second > 0 }
+                                if (limitRows.isEmpty()) {
+                                    Text("Aún no hay límites definidos. Configúralos para recibir alertas por área.", color = Muted, fontSize = 12.sp)
+                                } else {
+                                    limitRows.forEach { (category, values) ->
+                                        CategoryLimitRow(category, values.first, values.second)
+                                    }
+                                }
                             }
                         }
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -467,7 +513,7 @@ class MainActivity : ComponentActivity() {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                                 ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
                                     CapturedEventStore(activity).insertClassificationDemoEvents()
-                                    captured = CapturedEventStore(activity).recent()
+                                    captured = CapturedEventStore(activity).recent(10_000)
                                 })
                             }
                         }
@@ -475,7 +521,7 @@ class MainActivity : ComponentActivity() {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Bandeja capturada", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = { captured = CapturedEventStore(activity).recent() }) { Text("Actualizar") }
+                            TextButton(onClick = { captured = CapturedEventStore(activity).recent(10_000) }) { Text("Actualizar") }
                         }
                     }
                     if (captured.isEmpty()) {
@@ -484,7 +530,7 @@ class MainActivity : ComponentActivity() {
                         items(captured) { event ->
                             CapturedEventRow(event) {
                                 CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                captured = CapturedEventStore(activity).recent()
+                                captured = CapturedEventStore(activity).recent(10_000)
                             }
                         }
                     }
@@ -498,7 +544,7 @@ class MainActivity : ComponentActivity() {
                                 onEditCategory = { editingEvent = event },
                                 onConfirm = {
                                     CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                    captured = CapturedEventStore(activity).recent()
+                                    captured = CapturedEventStore(activity).recent(10_000)
                                 }
                             )
                         }
@@ -581,7 +627,7 @@ class MainActivity : ComponentActivity() {
                                     category = manualCategory,
                                     paymentSource = manualSource
                                 )
-                                captured = CapturedEventStore(activity).recent()
+                                captured = CapturedEventStore(activity).recent(10_000)
                                 showManualDialog = false
                             }
                         }
@@ -666,6 +712,41 @@ class MainActivity : ComponentActivity() {
                 dismissButton = { TextButton(onClick = { showGoalDialog = false }) { Text("Cancelar") } }
             )
         }
+        if (showCategoryLimitDialog) {
+            var selectedCategory by remember { mutableStateOf(BudgetCategories.first()) }
+            var limitInput by remember { mutableStateOf(planningStore.categoryLimit(selectedCategory).toString()) }
+            var limitError by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showCategoryLimitDialog = false },
+                title = { Text("Límite por área") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Define cuánto quieres permitir en cada área durante el mes.", color = Muted, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            BudgetCategories.take(5).forEach { category ->
+                                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            BudgetCategories.drop(5).forEach { category ->
+                                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
+                            }
+                        }
+                        OutlinedTextField(value = limitInput, onValueChange = { limitInput = it }, label = { Text("Límite mensual en pesos") }, singleLine = true)
+                        Text("Usa 0 para quitar el límite de esta área.", color = Muted, fontSize = 12.sp)
+                        limitError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = parseClpInput(limitInput)
+                        if (value == null || value < 0) limitError = "Ingresa un monto válido."
+                        else { planningStore.setCategoryLimit(selectedCategory, value); planningVersion++; showCategoryLimitDialog = false }
+                    }) { Text("Guardar") }
+                },
+                dismissButton = { TextButton(onClick = { showCategoryLimitDialog = false }) { Text("Cancelar") } }
+            )
+        }
         if (showIncomeDialog) {
             var name by remember { mutableStateOf("") }
             var amountInput by remember { mutableStateOf("") }
@@ -739,7 +820,7 @@ class MainActivity : ComponentActivity() {
                         listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros").forEach { category ->
                             TextButton(onClick = {
                                 CapturedEventStore(activity).updateCategory(event.id, category)
-                                captured = CapturedEventStore(activity).recent()
+                                captured = CapturedEventStore(activity).recent(10_000)
                                 editingEvent = null
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text(category.replaceFirstChar { it.uppercase() })
@@ -763,6 +844,74 @@ class MainActivity : ComponentActivity() {
                 Text(subtitle, color = Muted, fontSize = 12.sp)
             }
             TextButton(onClick = onDelete) { Text("Quitar") }
+        }
+    }
+}
+
+@Composable private fun CategoryDistributionCard(
+    rows: List<Pair<String, Int>>,
+    total: Int,
+    limits: Map<String, Int>,
+    uncategorized: Int
+) {
+    val visible = rows.filter { it.second > 0 }.sortedByDescending { it.second }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Dónde se va el dinero", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Text(if (total > 0) "Distribución real de tus gastos del mes" else "Todavía no hay gastos para distribuir", color = Muted, fontSize = 12.sp)
+            if (visible.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().height(18.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    visible.forEachIndexed { index, (_, amount) ->
+                        Box(Modifier.weight(amount.toFloat().coerceAtLeast(1f)).fillMaxHeight().background(CategoryColors[index % CategoryColors.size], RoundedCornerShape(5.dp)))
+                    }
+                }
+                visible.take(6).forEachIndexed { index, (category, amount) ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).background(CategoryColors[index % CategoryColors.size], RoundedCornerShape(3.dp)))
+                        Text(categoryLabel(category), color = Ink, fontSize = 12.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                        Text("${percent(amount, total)}%", color = Muted, fontSize = 11.sp)
+                        Text(clp(amount), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                val top = visible.first()
+                val topLimit = limits[top.first]
+                if (topLimit != null && top.second > topLimit) Text("Tu mayor área (${categoryLabel(top.first)}) supera su límite en ${clp(top.second - topLimit)}.", color = Color(0xFFB3261E), fontSize = 12.sp)
+            } else {
+                Text("Registra o captura gastos para ver qué área concentra tu presupuesto.", color = Muted, fontSize = 12.sp)
+            }
+            if (uncategorized > 0) Text("${clp(uncategorized)} están clasificados como Otros.", color = Color(0xFF9A6500), fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable private fun CategoryLimitRow(category: String, spent: Int, limit: Int) {
+    val ratio = if (limit > 0) spent.toFloat() / limit else 0f
+    val exceeded = limit > 0 && spent > limit
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(categoryLabel(category), color = Ink, fontSize = 12.sp)
+            Text(if (limit > 0) "${clp(spent)} / ${clp(limit)}" else "${clp(spent)} · sin límite", color = if (exceeded) Color(0xFFB3261E) else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+        LinearProgressIndicator(progress = { ratio.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(7.dp), color = if (exceeded) Color(0xFFB3261E) else Green, trackColor = Color(0xFFE3EEE9))
+    }
+}
+
+@Composable private fun SpendingPaceCard(total: Int, previousTotal: Int, dailyAverage: Int, dailySafeAmount: Int, available: Int) {
+    val change = if (previousTotal > 0) ((total - previousTotal).toFloat() / previousTotal * 100).toInt() else null
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F1))) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Ritmo de gasto", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Usa el ritmo actual para anticiparte al cierre del mes.", color = Muted, fontSize = 12.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Promedio diario", color = Muted, fontSize = 12.sp)
+                Text(clp(dailyAverage), color = Ink, fontWeight = FontWeight.Bold)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Disponible diario restante", color = Muted, fontSize = 12.sp)
+                Text(clp(dailySafeAmount), color = if (available >= 0) Green else Color(0xFFB3261E), fontWeight = FontWeight.Bold)
+            }
+            change?.let { Text("${if (it >= 0) "+" else ""}$it% frente al mes anterior (${clp(previousTotal)}).", color = if (it > 0) Color(0xFF9A6500) else Green, fontSize = 12.sp) }
+            if (available < 0) Text("El ritmo actual ya excede lo planificado.", color = Color(0xFFB3261E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -889,6 +1038,24 @@ private class BudgetSettings(context: Context) {
 }
 private fun clp(amount: Int) = NumberFormat.getCurrencyInstance(Locale("es", "CL")).apply { maximumFractionDigits = 0 }.format(amount)
 private fun percent(amount: Int, budget: Int) = (amount.toFloat() / budget.coerceAtLeast(1) * 100).toInt()
+private fun categoryLabel(category: String) = when (category) {
+    "alimentacion", "supermercado" -> "Alimentación"
+    "vivienda", "casa" -> "Vivienda"
+    "transporte", "auto" -> "Transporte"
+    "salud" -> "Salud"
+    "servicios" -> "Servicios"
+    "ocio", "salidas" -> "Ocio"
+    "compras" -> "Compras"
+    "deudas" -> "Deudas"
+    else -> "Otros"
+}
+private fun String.normalizedBudgetCategory() = when (this) {
+    "supermercado", "alimentacion" -> "alimentacion"
+    "casa", "vivienda" -> "vivienda"
+    "auto", "transporte" -> "transporte"
+    "salidas", "ocio" -> "ocio"
+    else -> this
+}
 
 private fun chatGptBrief(
     budget: Int,
@@ -931,6 +1098,12 @@ private fun Long.isCurrentMonth(): Boolean {
     val event = Calendar.getInstance().apply { timeInMillis = this@isCurrentMonth }
     val now = Calendar.getInstance()
     return event.get(Calendar.YEAR) == now.get(Calendar.YEAR) && event.get(Calendar.MONTH) == now.get(Calendar.MONTH)
+}
+
+private fun Long.isPreviousMonth(): Boolean {
+    val event = Calendar.getInstance().apply { timeInMillis = this@isPreviousMonth }
+    val previous = Calendar.getInstance().apply { add(Calendar.MONTH, -1) }
+    return event.get(Calendar.YEAR) == previous.get(Calendar.YEAR) && event.get(Calendar.MONTH) == previous.get(Calendar.MONTH)
 }
 
 
