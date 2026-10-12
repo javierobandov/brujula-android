@@ -70,8 +70,7 @@ class MainActivity : ComponentActivity() {
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
-    var monthlyBudget by remember { mutableStateOf(BudgetSettings(activity).monthlyBudget()) }
-    var showBudgetDialog by remember { mutableStateOf(false) }
+    val monthlyBudget = planningStore.incomes().sumOf { it.amount }
     var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showIncomeDialog by remember { mutableStateOf(false) }
@@ -147,6 +146,7 @@ class MainActivity : ComponentActivity() {
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
     val planningStore = remember { PlanningStore(activity) }
     val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
+    val monthlyBudget = plannedIncomeTotal
     val activeCommitments = planningStore.commitments().filter { it.isActive }
     val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
     val monthlyGoal = planningStore.monthlyGoal()
@@ -193,14 +193,14 @@ class MainActivity : ComponentActivity() {
                                     Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp)
                                     Text(clp(total), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text("${percent(total, monthlyBudget)}% del presupuesto", color = Color.Gray, fontSize = 12.sp)
+                                Text("${percent(total, monthlyBudget)}% de los ingresos", color = Color.Gray, fontSize = 12.sp)
                             }
                         }
                     }
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Presupuesto", clp(monthlyBudget), Ink, Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Ingresos", clp(monthlyBudget), Ink, Modifier.weight(1f))
                         SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
                         SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), Color(0xFF9A6500), Modifier.weight(1f))
                     }
@@ -236,7 +236,6 @@ class MainActivity : ComponentActivity() {
                                 }
                                 TextButton(onClick = { showOperations = false }) { Text("Cerrar") }
                             }
-                            ActionRow(Icons.Filled.AccountBalanceWallet, "Presupuesto mensual", "Ajustar límite del mes", { showBudgetDialog = true })
                             ActionRow(Icons.Filled.Person, "Gasto manual", "Registrar una compra", { showManualDialog = true })
                             ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                             ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
@@ -429,7 +428,6 @@ class MainActivity : ComponentActivity() {
                         Text("Preferencias", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                                ActionRow(Icons.Filled.AccountBalanceWallet, "Presupuesto mensual", "Cambiar el límite del mes", { showBudgetDialog = true })
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Permisos de Android para Scotiabank", { selectedTab = 2 })
                                 ActionRow(Icons.Filled.BarChart, "Consultar con ChatGPT", "Compartir un resumen sin datos sensibles", {
                                     activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -438,13 +436,51 @@ class MainActivity : ComponentActivity() {
                                         putExtra(Intent.EXTRA_TEXT, chatGptBrief(monthlyBudget, total, monthExpenses, pendingReconciliation, reconciledCount))
                                     }, "Compartir resumen con ChatGPT"))
                                 })
-                                ActionRow(Icons.Filled.PlayArrow, "Herramientas avanzadas", "Pruebas y bandeja técnica", { showOperations = true; selectedTab = 0 })
+                                ActionRow(Icons.Filled.PlayArrow, "Herramientas avanzadas", "Pruebas y bandeja técnica", { showOperations = true; selectedTab = 5 })
                             }
                         }
                         Text("Brújula no guarda credenciales bancarias, números de tarjeta ni el texto original al consultar ChatGPT.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
-        }
+                if (selectedTab == 5) {
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Herramientas avanzadas", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                                Text("Pruebas locales y bandeja técnica", color = Muted, fontSize = 13.sp)
+                            }
+                            TextButton(onClick = { showOperations = false; selectedTab = 4 }) { Text("Volver") }
+                        }
+                    }
+                    item {
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                ActionRow(Icons.Filled.Person, "Agregar gasto manual", "Registrar una compra", { showManualDialog = true }, emphasized = true)
+                                ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
+                                ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
+                                    CapturedEventStore(activity).insertClassificationDemoEvents()
+                                    captured = CapturedEventStore(activity).recent()
+                                })
+                            }
+                        }
+                    }
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Bandeja capturada", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = { captured = CapturedEventStore(activity).recent() }) { Text("Actualizar") }
+                        }
+                    }
+                    if (captured.isEmpty()) {
+                        item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Color.Gray, fontSize = 13.sp) }
+                    } else {
+                        items(captured) { event ->
+                            CapturedEventRow(event) {
+                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                captured = CapturedEventStore(activity).recent()
+                            }
+                        }
+                    }
+                }
             NavigationBar(containerColor = Color.White) {
                 listOf(0 to "Resumen", 1 to "Movimientos", 3 to "Planificación", 4 to "Cuenta").forEach { (tab, label) ->
                     NavigationBarItem(
@@ -581,39 +617,6 @@ class MainActivity : ComponentActivity() {
                         TextButton(onClick = { showCloudAccountDialog = false }) { Text("Cancelar") }
                     }
                 }
-            )
-        }
-        if (showBudgetDialog) {
-            var budgetInput by remember { mutableStateOf(monthlyBudget.toString()) }
-            var budgetError by remember { mutableStateOf<String?>(null) }
-            AlertDialog(
-                onDismissRequest = { showBudgetDialog = false },
-                title = { Text("Presupuesto mensual") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = budgetInput,
-                            onValueChange = { budgetInput = it },
-                            label = { Text("Monto en pesos") },
-                            singleLine = true
-                        )
-                        Text("Se usa sólo para calcular el porcentaje del mes actual.", color = Color.Gray, fontSize = 12.sp)
-                        budgetError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val value = parseClpInput(budgetInput)
-                        if (value == null || value <= 0) {
-                            budgetError = "Ingresa un presupuesto mayor que cero."
-                        } else {
-                            BudgetSettings(activity).setMonthlyBudget(value)
-                            monthlyBudget = value
-                            showBudgetDialog = false
-                        }
-                    }) { Text("Guardar") }
-                },
-                dismissButton = { TextButton(onClick = { showBudgetDialog = false }) { Text("Cancelar") } }
             )
         }
         if (showGoalDialog) {
