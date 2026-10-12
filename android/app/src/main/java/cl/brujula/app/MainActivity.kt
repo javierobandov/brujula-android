@@ -201,6 +201,21 @@ class MainActivity : ComponentActivity() {
                     SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal)
                 }
                 item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Presupuesto", clp(plannedAvailable.coerceAtLeast(0)), Green, Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
+                        SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, Modifier.weight(1f))
+                    }
+                }
+                item {
+                    Button(
+                        onClick = { showManualDialog = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Green)
+                    ) { Text("＋  Agregar gasto", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                }
+                item {
                     CalendarSpendingCard(
                         expenses = calendarExpenses,
                         month = calendarMonth,
@@ -239,11 +254,6 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = { movementFilter = "Pendientes"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green, fontWeight = FontWeight.Bold) }
                             }
                         }
-                    }
-                }
-                item {
-                    Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                        Text("＋  Agregar gasto", fontSize = 16.sp)
                     }
                 }
                 item {
@@ -1001,24 +1011,32 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, commitments: Int, goal: Int) {
     val progress = (spent.toFloat() / (available + spent).coerceAtLeast(1)).coerceIn(0f, 1f)
-    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text("Disponible para gastar", color = Color(0xFFD4EEE4), fontSize = 13.sp)
-                    Text(clp(available), color = if (available >= 0) Color.White else Color(0xFFFFDAD6), fontSize = 31.sp, fontWeight = FontWeight.Bold)
+                    Text("Disponible este mes", color = Muted, fontSize = 14.sp)
+                    Text(clp(available.coerceAtLeast(0)), color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold)
                 }
-                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFF4E9A87))) {
-                    Text(if (available >= 0) "En control" else "Revisar", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
+                    CircularProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color(0xFF68B4A1),
+                        trackColor = Color(0xFFD4E9E2),
+                        strokeWidth = 8.dp
+                    )
+                    Text("${(progress * 100).toInt()}%", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(7.dp), color = Color(0xFFA5D8C8), trackColor = Color(0x557AB9AA))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                SummaryHeroMetric("Gastado", spent)
-                SummaryHeroMetric("Ingresos", income)
-                SummaryHeroMetric("Meta", goal)
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(7.dp), color = Color(0xFF68B4A1), trackColor = Color(0xFFD4E9E2))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                Column {
+                    Text("Gasto del mes", color = Muted, fontSize = 12.sp)
+                    Text(clp(spent), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("${(progress * 100).toInt()}% del presupuesto", color = Muted, fontSize = 11.sp)
             }
-            Text("Compromisos ${clp(commitments)}", color = Color(0xFFC7E7DE), fontSize = 11.sp)
         }
     }
 }
