@@ -1,0 +1,61 @@
+name: Visual lab
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/visual-lab.yml"
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.1 emulator system-images;android-35;google_apis;x86_64
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Run emulator and capture screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am force-stop cl.brujula.app
+            adb shell monkey -p cl.brujula.app 1
+            sleep 3
+            mkdir -p visual-lab
+            adb exec-out screencap -p > visual-lab/01-resumen.png
+            adb shell input tap 157 790
+            sleep 1
+            adb exec-out screencap -p > visual-lab/02-movimientos.png
+            adb shell input tap 262 790
+            sleep 1
+            adb exec-out screencap -p > visual-lab/03-planificacion.png
+            adb shell input tap 367 790
+            sleep 1
+            adb exec-out screencap -p > visual-lab/04-cuenta.png
+
+      - name: Upload visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: brujula-visual-lab
+          path: visual-lab/
