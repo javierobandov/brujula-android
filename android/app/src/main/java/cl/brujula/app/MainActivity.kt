@@ -380,13 +380,15 @@ class MainActivity : ComponentActivity() {
                         Text("PLAN DEL MES", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text("Planificación", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text("Decide cuánto puedes gastar antes de que ocurra.", color = Muted, fontSize = 14.sp)
+                        Spacer(Modifier.height(6.dp))
                         PlanHeroCard(plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal, plannedAvailable)
-                        Text("Acciones rápidas", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Acciones rápidas", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             PlanActionTile(Icons.Filled.AccountBalanceWallet, "Ingreso", { showIncomeDialog = true }, Modifier.weight(1f))
                             PlanActionTile(Icons.Filled.Description, "Compromiso", { showCommitmentDialog = true }, Modifier.weight(1f))
                             PlanActionTile(Icons.Filled.Check, "Meta", { showGoalDialog = true }, Modifier.weight(1f))
                         }
+                        Spacer(Modifier.height(14.dp))
                         val limitRows = BudgetCategories.map { category ->
                             val spent = categoryTotals.firstOrNull { it.first == category }?.second ?: 0
                             category to (spent to (categoryLimits[category] ?: 0))
@@ -410,6 +412,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        Spacer(Modifier.height(14.dp))
                         Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -433,8 +436,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        Spacer(Modifier.height(14.dp))
                         if (planningStore.incomes().isNotEmpty()) {
-                            Text("Ingresos registrados", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Ingresos registrados", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(2.dp))
                             planningStore.incomes().forEach { income ->
                                 PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente") {
                                     planningStore.deleteIncome(income.id); planningVersion++
@@ -444,6 +449,7 @@ class MainActivity : ComponentActivity() {
                             Text("Aún no has registrado ingresos. Agrégalos para calcular tu disponible.", color = Muted, fontSize = 12.sp)
                         }
                         if (activeCommitments.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
                             Text("Compromisos activos", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             activeCommitments.forEach { commitment ->
                                 val installment = if (commitment.hasInstallments) "Cuota ${commitment.currentInstallment}/${commitment.totalInstallments}" else "Recurrente"
@@ -928,8 +934,8 @@ class MainActivity : ComponentActivity() {
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(modifier = modifier.sizeIn(minHeight = 84.dp).clickable(role = Role.Button, onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Card(modifier = modifier.heightIn(min = 112.dp).clickable(role = Role.Button, onClick = onClick), shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = when (label) { "Compromiso" -> Color(0xFFFFF0D6); "Meta" -> Lavender; else -> Mint })) {
                 Icon(icon, contentDescription = label, tint = Green, modifier = Modifier.padding(9.dp).size(21.dp))
             }
