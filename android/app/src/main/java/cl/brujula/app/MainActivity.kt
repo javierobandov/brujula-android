@@ -157,7 +157,7 @@ class MainActivity : ComponentActivity() {
         .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.amount ?: 0 } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
-    val categoryLimits = planningStore.categoryLimits().associate { it.category to it.amount }
+    val categoryLimits = planningStore.categoryLimits().associate { it.category.normalizedBudgetCategory() to it.amount }
     val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.amount ?: 0 }
     val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
     val monthlyBudget = plannedIncomeTotal
