@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,6 +49,9 @@ import kotlinx.coroutines.delay
 private val Green = Color(0xFF237F6D)
 private val Paper = Color(0xFFF6F8F5)
 private val Ink = Color(0xFF1F2A27)
+private val Mint = Color(0xFFEAF6F1)
+private val Lavender = Color(0xFFF0E7FF)
+private val Muted = Color(0xFF6D7773)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { BrujulaApp(this) } }
@@ -223,39 +227,25 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (showOperations) item {
-                    OutlinedButton(onClick = { showSettings = !showSettings }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (showSettings) "Ocultar configuración" else "Mostrar configuración")
+                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Herramientas", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Text("Acciones de prueba y configuración", color = Muted, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = { showOperations = false }) { Text("Cerrar") }
+                            }
+                            ActionRow(Icons.Filled.AccountBalanceWallet, "Presupuesto mensual", "Ajustar límite del mes", { showBudgetDialog = true })
+                            ActionRow(Icons.Filled.Person, "Gasto manual", "Registrar una compra", { showManualDialog = true })
+                            ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
+                            ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
+                                CapturedEventStore(activity).insertClassificationDemoEvents()
+                                captured = CapturedEventStore(activity).recent()
+                            })
+                            Text("Los datos de prueba nunca entran al resumen real y la app no usa credenciales bancarias.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
                     }
-                    if (showSettings) {
-                    OutlinedButton(onClick = { showBudgetDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Configurar presupuesto mensual")
-                    }
-                    OutlinedButton(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Agregar gasto manual")
-                    }
-                    OutlinedButton(onClick = { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Configurar captura de notificaciones")
-                    }
-                    OutlinedButton(onClick = {
-                        CapturedEventStore(activity).insertDemoEvent()
-                        captured = CapturedEventStore(activity).recent()
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Insertar evento de prueba")
-                    }
-                    OutlinedButton(onClick = {
-                        CapturedEventStore(activity).insertClassificationDemoEvents()
-                        captured = CapturedEventStore(activity).recent()
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Probar clasificación de movimientos")
-                    }
-                    OutlinedButton(onClick = {
-                        CapturedEventStore(activity).deleteDemoEvents()
-                        captured = CapturedEventStore(activity).recent()
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Limpiar eventos DEMO")
-                    }
-                    }
-                    Text("La app sólo guardará notificaciones filtradas de movimientos; no usa credenciales bancarias.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
                 if (showOperations) item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -351,10 +341,14 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 2) {
                     item {
-                        Text("Captura de gastos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Captura", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                         Text("Scotiabank se captura desde sus notificaciones. También puedes registrar un gasto manual.", color = Color.Gray, fontSize = 13.sp)
-                        OutlinedButton(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar gasto manual") }
-                        OutlinedButton(onClick = { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.fillMaxWidth()) { Text("Configurar notificaciones") }
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                ActionRow(Icons.Filled.Person, "Agregar gasto manual", "Para compras que no llegaron como notificación", { showManualDialog = true }, emphasized = true)
+                                ActionRow(Icons.Filled.Description, "Configurar notificaciones", "Activar acceso de captura de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
+                            }
+                        }
                     }
                 }
                 if (selectedTab == 3) {
@@ -382,9 +376,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        OutlinedButton(onClick = { showIncomeDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar ingreso") }
-                        OutlinedButton(onClick = { showCommitmentDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Agregar compromiso o cuota") }
-                        OutlinedButton(onClick = { showGoalDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar meta mensual") }
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                ActionRow(Icons.Filled.AccountBalanceWallet, "Agregar ingreso", "Sueldo, renta u otra entrada", { showIncomeDialog = true })
+                                ActionRow(Icons.Filled.Description, "Agregar compromiso o cuota", "Gastos recurrentes y cuotas futuras", { showCommitmentDialog = true })
+                                ActionRow(Icons.Filled.Check, "Configurar meta mensual", "Define cuánto quieres reservar", { showGoalDialog = true })
+                            }
+                        }
                         if (planningStore.incomes().isNotEmpty()) {
                             Text("Ingresos", color = Ink, fontWeight = FontWeight.Bold)
                             planningStore.incomes().forEach { income ->
@@ -406,44 +404,44 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 4) {
                     item {
-                        Text("Cuenta y respaldo", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Conecta una cuenta cloud para recuperar tus movimientos." else "Cuenta activa: $cloudAccountLabel", color = Color.Gray, fontSize = 13.sp)
-                        OutlinedButton(onClick = { showCloudAccountDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar cuenta cloud") }
-                        if (cloudAccountLabel != "Sin cuenta cloud") {
-                            Button(
-                                onClick = {
-                                    syncStatus = "Sincronizando…"
-                                    firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result -> syncStatus = result }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Sincronizar y recuperar movimientos") }
+                        Text("Cuenta", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Todo funciona en el teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 13.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Sincronización", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                ActionRow(Icons.Filled.Person, "Cuenta cloud", "Recuperar movimientos en otro teléfono", { showCloudAccountDialog = true })
+                                if (cloudAccountLabel != "Sin cuenta cloud") {
+                                    ActionRow(Icons.Filled.Check, "Sincronizar ahora", "Enviar y recuperar movimientos", {
+                                        syncStatus = "Sincronizando…"
+                                        firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result -> syncStatus = result }
+                                    }, emphasized = true)
+                                }
+                                ActionRow(Icons.Filled.Description, "Respaldo portátil", "Exportar o importar un archivo local", {
+                                    syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json")
+                                })
+                                ActionRow(Icons.Filled.List, "Importar respaldo", "Seleccionar un archivo existente", {
+                                    syncImportLauncher.launch(arrayOf("application/json", "text/json", "text/*"))
+                                })
+                            }
                         }
-                        OutlinedButton(
-                            onClick = { syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json") },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Exportar respaldo portátil") }
-                        OutlinedButton(
-                            onClick = { syncImportLauncher.launch(arrayOf("application/json", "text/json", "text/*")) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Importar respaldo portátil") }
-                        syncStatus?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
-                        OutlinedButton(onClick = { showBudgetDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Configurar presupuesto mensual") }
-                        OutlinedButton(onClick = { selectedTab = 2 }, modifier = Modifier.fillMaxWidth()) { Text("Configurar captura de notificaciones") }
-                        OutlinedButton(
-                            onClick = {
-                                activity.startActivity(Intent.createChooser(
-                                    Intent(Intent.ACTION_SEND).apply {
+                        syncStatus?.let { Text(it, color = Green, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
+                        Text("Preferencias", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                ActionRow(Icons.Filled.AccountBalanceWallet, "Presupuesto mensual", "Cambiar el límite del mes", { showBudgetDialog = true })
+                                ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Permisos de Android para Scotiabank", { selectedTab = 2 })
+                                ActionRow(Icons.Filled.BarChart, "Consultar con ChatGPT", "Compartir un resumen sin datos sensibles", {
+                                    activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
                                         putExtra(Intent.EXTRA_SUBJECT, "Resumen financiero Brújula")
                                         putExtra(Intent.EXTRA_TEXT, chatGptBrief(monthlyBudget, total, monthExpenses, pendingReconciliation, reconciledCount))
-                                    },
-                                    "Compartir resumen con ChatGPT"
-                                ))
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Consultar resumen con ChatGPT") }
-                        Text("Comparte sólo un resumen sanitizado. No incluye credenciales, números de tarjeta ni el texto original de las notificaciones.", color = Color.Gray, fontSize = 12.sp)
-                        OutlinedButton(onClick = { showOperations = true; selectedTab = 0 }, modifier = Modifier.fillMaxWidth()) { Text("Abrir herramientas avanzadas") }
+                                    }, "Compartir resumen con ChatGPT"))
+                                })
+                                ActionRow(Icons.Filled.PlayArrow, "Herramientas avanzadas", "Pruebas y bandeja técnica", { showOperations = true; selectedTab = 0 })
+                            }
+                        }
+                        Text("Brújula no guarda credenciales bancarias, números de tarjeta ni el texto original al consultar ChatGPT.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
         }
@@ -751,6 +749,31 @@ class MainActivity : ComponentActivity() {
             Text(label, color = Color.Gray, fontSize = 11.sp, maxLines = 1)
             Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
+    }
+}
+
+@Composable private fun ActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    emphasized: Boolean = false
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = if (emphasized) Mint else Lavender)) {
+            Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.padding(9.dp).size(21.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(title, color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(subtitle, color = Muted, fontSize = 11.sp)
+        }
+        Text("›", color = Green, fontSize = 24.sp, fontWeight = FontWeight.Light)
     }
 }
 
