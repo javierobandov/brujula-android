@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
@@ -87,6 +88,9 @@ class MainActivity : ComponentActivity() {
     var movementFilter by remember { mutableStateOf("Todos") }
     var movementQuery by remember { mutableStateOf("") }
     var movementPayment by remember { mutableStateOf("Todos") }
+    var calendarMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
+    var calendarYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
+    var selectedCalendarDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -152,6 +156,7 @@ class MainActivity : ComponentActivity() {
     val previousTotal = previousMonthExpenses.sumOf { it.amount ?: 0 }
     val refunds = monthRefunds.sumOf { it.amount ?: 0 }
     val netTotal = (total - refunds).coerceAtLeast(0)
+    val calendarExpenses = expenses.filter { it.receivedAt.isMonth(calendarYear, calendarMonth) }
     val planningStore = remember { PlanningStore(activity) }
     val categoryTotals = BudgetCategories
         .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.amount ?: 0 } }
@@ -223,6 +228,22 @@ class MainActivity : ComponentActivity() {
                             if (refunds > 0) Text("Devoluciones consideradas: ${clp(refunds)}", color = Green, fontSize = 12.sp)
                         }
                     }
+                }
+                item {
+                    CalendarSpendingCard(
+                        expenses = calendarExpenses,
+                        month = calendarMonth,
+                        year = calendarYear,
+                        selectedDay = selectedCalendarDay,
+                        onMonthChange = { delta ->
+                            val next = Calendar.getInstance().apply { set(calendarYear, calendarMonth, 1); add(Calendar.MONTH, delta) }
+                            calendarMonth = next.get(Calendar.MONTH)
+                            calendarYear = next.get(Calendar.YEAR)
+                            selectedCalendarDay = 1
+                        },
+                        onDaySelected = { selectedCalendarDay = it },
+                        onViewMovements = { movementQuery = ""; movementFilter = "Todos"; selectedTab = 1 }
+                    )
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -910,6 +931,93 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun CalendarSpendingCard(
+    expenses: List<CapturedEvent>,
+    month: Int,
+    year: Int,
+    selectedDay: Int,
+    onMonthChange: (Int) -> Unit,
+    onDaySelected: (Int) -> Unit,
+    onViewMovements: () -> Unit
+) {
+    val firstDay = Calendar.getInstance().apply { set(year, month, 1, 0, 0, 0) }
+    val daysInMonth = firstDay.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val leading = (firstDay.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val cellCount = ((leading + daysInMonth + 6) / 7) * 7
+    val totalsByDay = expenses.groupBy { Calendar.getInstance().apply { timeInMillis = it.receivedAt }.get(Calendar.DAY_OF_MONTH) }
+        .mapValues { (_, values) -> values.sumOf { it.amount ?: 0 } }
+    val maxDayTotal = totalsByDay.values.maxOrNull() ?: 0
+    val selectedEvents = expenses.filter { Calendar.getInstance().apply { timeInMillis = it.receivedAt }.get(Calendar.DAY_OF_MONTH) == selectedDay }
+    val selectedTotal = selectedEvents.sumOf { it.amount ?: 0 }
+    val average = if (daysInMonth > 0) expenses.sumOf { it.amount ?: 0 } / daysInMonth else 0
+    val mostExpensive = totalsByDay.maxByOrNull { it.value }
+    val monthLabel = SimpleDateFormat("MMMM yyyy", Locale("es", "CL")).format(firstDay.time).replaceFirstChar { it.uppercase() }
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Gasto por día", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Detecta cuándo se concentra tu gasto", color = Muted, fontSize = 12.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { onMonthChange(-1) }, modifier = Modifier.sizeIn(minWidth = 40.dp, minHeight = 40.dp)) { Text("‹", fontSize = 24.sp, color = Green) }
+                    Text(monthLabel, color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { onMonthChange(1) }, modifier = Modifier.sizeIn(minWidth = 40.dp, minHeight = 40.dp)) { Text("›", fontSize = 24.sp, color = Green) }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CalendarInsight("Promedio diario", clp(average), Icons.Filled.BarChart, Modifier.weight(1f))
+                CalendarInsight("Día más caro", mostExpensive?.let { "${it.key} oct · ${clp(it.value)}" } ?: "Sin gastos", Icons.Filled.Warning, Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do").forEach { day -> Text(day, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)) }
+            }
+            repeat(cellCount / 7) { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    repeat(7) { column ->
+                        val day = row * 7 + column - leading + 1
+                        if (day in 1..daysInMonth) {
+                            val amount = totalsByDay[day] ?: 0
+                            val fill = when {
+                                amount == 0 -> Color(0xFFF1F4F2)
+                                maxDayTotal > 0 && amount >= maxDayTotal * 0.66f -> Color(0xFFFFDAD6)
+                                maxDayTotal > 0 && amount >= maxDayTotal * 0.33f -> Color(0xFFFFE9BF)
+                                else -> Color(0xFFDDF1E9)
+                            }
+                            Box(Modifier.weight(1f).height(38.dp).padding(3.dp).background(if (day == selectedDay) Green else fill, RoundedCornerShape(50)).clickable(role = Role.Button) { onDaySelected(day) }, contentAlignment = Alignment.Center) {
+                                Text(day.toString(), color = if (day == selectedDay) Color.White else Ink, fontSize = 12.sp, fontWeight = if (amount > 0 || day == selectedDay) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        } else {
+                            Spacer(Modifier.weight(1f).height(38.dp))
+                        }
+                    }
+                }
+            }
+            Card(shape = RoundedCornerShape(15.dp), colors = CardDefaults.cardColors(containerColor = if (selectedTotal > 0) Color(0xFFFFF0EF) else Mint)) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${selectedDay} de ${monthLabel.substringBeforeLast(" ")}", color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(if (selectedTotal > 0) "${clp(selectedTotal)} · ${selectedEvents.size} movimiento(s)" else "Sin movimientos registrados", color = Muted, fontSize = 12.sp)
+                    }
+                    if (selectedTotal > 0) TextButton(onClick = onViewMovements) { Text("Ver movimientos", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun CalendarInsight(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
+    Card(modifier = modifier, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
+        Row(Modifier.padding(9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.size(18.dp))
+            Column {
+                Text(label, color = Muted, fontSize = 10.sp, maxLines = 1)
+                Text(value, color = Ink, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
+    }
+}
+
 @Composable private fun CategoryDistributionCard(
     rows: List<Pair<String, Int>>,
     total: Int,
@@ -1166,6 +1274,11 @@ private fun Long.isPreviousMonth(): Boolean {
     val event = Calendar.getInstance().apply { timeInMillis = this@isPreviousMonth }
     val previous = Calendar.getInstance().apply { add(Calendar.MONTH, -1) }
     return event.get(Calendar.YEAR) == previous.get(Calendar.YEAR) && event.get(Calendar.MONTH) == previous.get(Calendar.MONTH)
+}
+
+private fun Long.isMonth(year: Int, month: Int): Boolean {
+    val event = Calendar.getInstance().apply { timeInMillis = this@isMonth }
+    return event.get(Calendar.YEAR) == year && event.get(Calendar.MONTH) == month
 }
 
 
