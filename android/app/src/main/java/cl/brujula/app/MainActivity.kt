@@ -177,7 +177,15 @@ class MainActivity : ComponentActivity() {
     val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
     val dailySafeAmount = if (daysElapsed < daysInMonth) (realAvailable.coerceAtLeast(0) / (daysInMonth - daysElapsed).coerceAtLeast(1)) else 0
     val projections = planningStore.projections()
-    MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = Green,
+            background = Paper,
+            surface = Color.White,
+            onSurface = Ink,
+            onBackground = Ink
+        )
+    ) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
             LazyColumn(
@@ -212,7 +220,8 @@ class MainActivity : ComponentActivity() {
                         onClick = { showManualDialog = true },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Green)
+                        colors = ButtonDefaults.buttonColors(containerColor = Green),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 1.dp)
                     ) { Text("＋  Agregar gasto", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
                 }
                 item {
@@ -353,13 +362,13 @@ class MainActivity : ComponentActivity() {
                         Text("AUTOMÁTICO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text("Captura", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text("Deja que Brújula registre tus gastos desde las notificaciones.", color = Muted, fontSize = 14.sp)
-                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+                        Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
                             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Captura de Scotiabank", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Text("La app solo lee las notificaciones autorizadas en Android. No necesita tus claves bancarias.", color = Muted, fontSize = 13.sp)
                             }
                         }
-                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Configurar notificaciones", "Activar acceso de captura de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                             }
@@ -382,7 +391,7 @@ class MainActivity : ComponentActivity() {
                             val spent = categoryTotals.firstOrNull { it.first == category }?.second ?: 0
                             category to (spent to (categoryLimits[category] ?: 0))
                         }.filter { it.second.first > 0 || it.second.second > 0 }
-                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
@@ -401,7 +410,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
@@ -452,7 +461,7 @@ class MainActivity : ComponentActivity() {
                         Text("TU ESPACIO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text("Cuenta", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text(if (cloudAccountLabel == "Sin cuenta cloud") "Tus datos viven en este teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 14.sp)
-                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
+                        Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFE1D2FF))) {
                                     Icon(Icons.Filled.Person, contentDescription = null, tint = Green, modifier = Modifier.padding(11.dp).size(22.dp))
@@ -465,7 +474,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Spacer(Modifier.height(4.dp))
                         Text("Sincronización", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Person, "Cuenta cloud", "Recuperar movimientos en otro teléfono", { showCloudAccountDialog = true })
                                 if (cloudAccountLabel != "Sin cuenta cloud") {
@@ -490,7 +499,7 @@ class MainActivity : ComponentActivity() {
                         }
                         syncStatus?.let { Text(it, color = Green, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
                         Text("Preferencias", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Permisos de Android para Scotiabank", { selectedTab = 2 })
                                 ActionRow(Icons.Filled.BarChart, "Consultar con ChatGPT", "Compartir un resumen sin datos sensibles", {
@@ -536,7 +545,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     item {
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                                 ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
@@ -584,6 +593,13 @@ class MainActivity : ComponentActivity() {
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = Lavender,
+                            selectedIconColor = Green,
+                            selectedTextColor = Ink,
+                            unselectedIconColor = Muted,
+                            unselectedTextColor = Muted
+                        ),
                         icon = {
                             Icon(
                                 imageVector = when (tab) { 0 -> Icons.Filled.Home; 1 -> Icons.Filled.List; 3 -> Icons.Filled.BarChart; else -> Icons.Filled.Person },
@@ -865,7 +881,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
-    Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(13.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
@@ -878,7 +894,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun PlanHeroCard(income: Int, commitments: Int, goal: Int, available: Int) {
     val availableColor = if (available >= 0) Color.White else Color(0xFFFFDAD6)
-    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column {
@@ -943,7 +959,7 @@ class MainActivity : ComponentActivity() {
     val average = if (daysInMonth > 0) expenses.sumOf { it.amount ?: 0 } / daysInMonth else 0
     val mostExpensive = totalsByDay.maxByOrNull { it.value }
     val monthLabel = SimpleDateFormat("MMMM yyyy", Locale("es", "CL")).format(firstDay.time).replaceFirstChar { it.uppercase() }
-    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
@@ -1011,7 +1027,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, commitments: Int, goal: Int) {
     val progress = (spent.toFloat() / (available + spent).coerceAtLeast(1)).coerceIn(0f, 1f)
-    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
@@ -1055,7 +1071,7 @@ class MainActivity : ComponentActivity() {
     uncategorized: Int
 ) {
     val visible = rows.filter { it.second > 0 }.sortedByDescending { it.second }
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Dónde se va el dinero", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Text(if (total > 0) "Distribución real de tus gastos del mes" else "Todavía no hay gastos para distribuir", color = Muted, fontSize = 12.sp)
@@ -1098,7 +1114,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun SpendingPaceCard(total: Int, previousTotal: Int, dailyAverage: Int, dailySafeAmount: Int, available: Int) {
     val change = if (previousTotal > 0) ((total - previousTotal).toFloat() / previousTotal * 100).toInt() else null
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F1))) {
+    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F1))) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Ritmo de gasto", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("Usa el ritmo actual para anticiparte al cierre del mes.", color = Muted, fontSize = 12.sp)
@@ -1118,7 +1134,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun BreakdownCard(title: String, rows: List<Pair<String, Int>>, emptyLabel: String) {
     val visibleRows = rows.filter { it.second > 0 }.sortedByDescending { it.second }
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             if (visibleRows.isEmpty()) {
@@ -1145,9 +1161,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun SummaryMetric(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(modifier = modifier, shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
+            Card(shape = RoundedCornerShape(50), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
                 Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.padding(7.dp).size(20.dp))
             }
             Text(label, color = Muted, fontSize = 11.sp, maxLines = 1)
@@ -1173,7 +1189,7 @@ class MainActivity : ComponentActivity() {
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = if (emphasized) Mint else Lavender)) {
+        Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), colors = CardDefaults.cardColors(containerColor = if (emphasized) Mint else Lavender)) {
             Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.padding(9.dp).size(21.dp))
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -1186,7 +1202,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun SummaryMovementRow(event: CapturedEvent) {
     Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
+        Card(shape = RoundedCornerShape(50), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
             Icon(
                 imageVector = when (event.category) { "supermercado" -> Icons.Filled.ShoppingCart; "auto" -> Icons.Filled.DirectionsCar; "suscripciones" -> Icons.Filled.PlayArrow; else -> Icons.Filled.Description },
                 contentDescription = null,
@@ -1203,7 +1219,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = if (event.status == "requires_review") Color(0xFFFFF0D6) else Mint)) {
