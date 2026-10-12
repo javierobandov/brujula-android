@@ -16,8 +16,8 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         applicationId = "cl.brujula.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("versionCode").getOrElse("1").toInt()
-        versionName = providers.gradleProperty("versionName").getOrElse("0.1.0")
+        versionCode = providers.gradleProperty("versionCode").getOrElse("16").toInt()
+        versionName = providers.gradleProperty("versionName").getOrElse("0.16.0")
     }
     buildFeatures { buildConfig = true }
     defaultConfig {
