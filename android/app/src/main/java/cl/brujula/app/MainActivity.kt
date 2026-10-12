@@ -138,7 +138,10 @@ class MainActivity : ComponentActivity() {
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
+    val monthRefunds = realCaptured.filter { it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
     val total = monthExpenses.sumOf { it.amount ?: 0 }
+    val refunds = monthRefunds.sumOf { it.amount ?: 0 }
+    val netTotal = (total - refunds).coerceAtLeast(0)
     val categoryTotals = listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros")
         .map { category -> category to monthExpenses.filter { it.category == category }.sumOf { it.amount ?: 0 } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
@@ -149,6 +152,7 @@ class MainActivity : ComponentActivity() {
     val activeCommitments = planningStore.commitments().filter { it.isActive }
     val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
     val monthlyGoal = planningStore.monthlyGoal()
+    val plannedAvailable = plannedIncomeTotal - plannedCommitmentTotal - monthlyGoal
     val projections = planningStore.projections()
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Paper)) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
@@ -172,28 +176,30 @@ class MainActivity : ComponentActivity() {
                         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Disponible este mes", color = Color.Gray, fontSize = 15.sp)
-                                    Text(clp((monthlyBudget - total).coerceAtLeast(0)), color = Ink, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                                    Text("Disponible tras gastos", color = Color.Gray, fontSize = 15.sp)
+                                    Text(clp((monthlyBudget - netTotal).coerceAtLeast(0)), color = Ink, fontSize = 36.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Box(Modifier.size(78.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(
-                                        progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                                        progress = { (netTotal.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) },
                                         modifier = Modifier.fillMaxSize(),
                                         color = Green,
                                         trackColor = Color(0xFFCFE5DD),
                                         strokeWidth = 10.dp
                                     )
-                                    Text("${percent(total, monthlyBudget)}%", color = Color.Gray, fontSize = 13.sp)
+                                    Text("${percent(netTotal, monthlyBudget)}%", color = Color.Gray, fontSize = 13.sp)
                                 }
                             }
-                            LinearProgressIndicator(progress = { (total.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = Color(0xFFD0E7DF), trackColor = Color(0xFFCFE5DD))
+                            LinearProgressIndicator(progress = { (netTotal.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = Color(0xFFD0E7DF), trackColor = Color(0xFFCFE5DD))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                                 Column {
-                                    Text("Gasto del mes", color = Color.Gray, fontSize = 13.sp)
-                                    Text(clp(total), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                    Text("Gasto neto del mes", color = Color.Gray, fontSize = 13.sp)
+                                    Text(clp(netTotal), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text("${percent(total, monthlyBudget)}% de los ingresos", color = Color.Gray, fontSize = 12.sp)
+                                Text("${percent(netTotal, monthlyBudget)}% de los ingresos", color = Color.Gray, fontSize = 12.sp)
                             }
+                            Text("Planificado después de compromisos y meta: ${clp(plannedAvailable)}", color = Color.Gray, fontSize = 12.sp)
+                            if (refunds > 0) Text("Devoluciones consideradas: ${clp(refunds)}", color = Green, fontSize = 12.sp)
                         }
                     }
                 }
