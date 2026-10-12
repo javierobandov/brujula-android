@@ -30,11 +30,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.Role
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -167,7 +169,7 @@ class MainActivity : ComponentActivity() {
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("BRÚJULA", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0)), modifier = Modifier.clickable { selectedTab = 4 }) {
+                        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0)), modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(role = Role.Button) { selectedTab = 4 }) {
                             Icon(Icons.Filled.Person, contentDescription = "Cuenta", tint = Green, modifier = Modifier.padding(10.dp).size(26.dp))
                         }
                     }
@@ -177,7 +179,7 @@ class MainActivity : ComponentActivity() {
                         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Disponible tras gastos", color = Color.Gray, fontSize = 15.sp)
+                                    Text("Disponible tras gastos", color = Muted, fontSize = 15.sp)
                                     Text(clp((monthlyBudget - netTotal).coerceAtLeast(0)), color = Ink, fontSize = 36.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Box(Modifier.size(78.dp), contentAlignment = Alignment.Center) {
@@ -188,18 +190,18 @@ class MainActivity : ComponentActivity() {
                                         trackColor = Color(0xFFCFE5DD),
                                         strokeWidth = 10.dp
                                     )
-                                    Text("${percent(netTotal, monthlyBudget)}%", color = Color.Gray, fontSize = 13.sp)
+                                    Text("${percent(netTotal, monthlyBudget)}%", color = Muted, fontSize = 13.sp)
                                 }
                             }
                             LinearProgressIndicator(progress = { (netTotal.toFloat() / monthlyBudget.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = Color(0xFFD0E7DF), trackColor = Color(0xFFCFE5DD))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                                 Column {
-                                    Text("Gasto neto del mes", color = Color.Gray, fontSize = 13.sp)
+                                    Text("Gasto neto del mes", color = Muted, fontSize = 13.sp)
                                     Text(clp(netTotal), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text("${percent(netTotal, monthlyBudget)}% de los ingresos", color = Color.Gray, fontSize = 12.sp)
+                                Text("${percent(netTotal, monthlyBudget)}% de los ingresos", color = Muted, fontSize = 12.sp)
                             }
-                            Text("Planificado después de compromisos y meta: ${clp(plannedAvailable)}", color = Color.Gray, fontSize = 12.sp)
+                            Text("Planificado después de compromisos y meta: ${clp(plannedAvailable)}", color = Muted, fontSize = 12.sp)
                             if (refunds > 0) Text("Devoluciones consideradas: ${clp(refunds)}", color = Green, fontSize = 12.sp)
                         }
                     }
@@ -235,11 +237,11 @@ class MainActivity : ComponentActivity() {
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("Actividad reciente", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                TextButton(onClick = { selectedTab = 1 }) { Text("›", fontSize = 26.sp, color = Green) }
+                                TextButton(onClick = { selectedTab = 1 }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text("Ver todo", fontSize = 12.sp, color = Green) }
                             }
                             val recentSummary = monthExpenses.sortedByDescending { it.receivedAt }.take(3)
                             if (recentSummary.isEmpty()) {
-                                Text("Aún no hay gastos reales.", color = Color.Gray, fontSize = 13.sp)
+                                Text("Aún no hay gastos reales.", color = Muted, fontSize = 13.sp)
                             } else {
                                 recentSummary.forEach { event -> SummaryMovementRow(event) }
                             }
@@ -267,7 +269,7 @@ class MainActivity : ComponentActivity() {
                     }
                     item {
                         Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("Busca por comercio o texto y filtra lo que requiere revisión.", color = Color.Gray, fontSize = 13.sp)
+                        Text("Busca por comercio o texto y filtra lo que requiere revisión.", color = Muted, fontSize = 13.sp)
                         OutlinedTextField(
                             value = movementQuery,
                             onValueChange = { movementQuery = it },
@@ -294,10 +296,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        Text("${visibleMovements.size} movimiento(s) visible(s)", color = Color.Gray, fontSize = 12.sp)
+                        Text("${visibleMovements.size} movimiento(s) visible(s)", color = Muted, fontSize = 12.sp)
                     }
                     if (visibleMovements.isEmpty()) {
-                        item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Color.Gray, fontSize = 13.sp) }
+                        item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(visibleMovements) { event ->
                             CapturedEventRow(event) {
@@ -310,7 +312,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 2) {
                     item {
                         Text("Captura", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text("Scotiabank se captura desde sus notificaciones. También puedes registrar un gasto manual.", color = Color.Gray, fontSize = 13.sp)
+                        Text("Scotiabank se captura desde sus notificaciones. También puedes registrar un gasto manual.", color = Muted, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Person, "Agregar gasto manual", "Para compras que no llegaron como notificación", { showManualDialog = true }, emphasized = true)
@@ -322,23 +324,23 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 3) {
                     item {
                         Text("Planificación mensual${if (planningVersion >= 0) "" else ""}", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("La vista que faltaba para llevar tu método de Excel: ingresos, compromisos y cuotas.", color = Color.Gray, fontSize = 13.sp)
+                        Text("La vista que faltaba para llevar tu método de Excel: ingresos, compromisos y cuotas.", color = Muted, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Resumen planificado", color = Ink, fontWeight = FontWeight.Bold)
                                 Text("Ingresos registrados: ${clp(plannedIncomeTotal)}", color = Green)
                                 Text("Compromisos activos: ${clp(plannedCommitmentTotal)}", color = Color(0xFF9A6500))
                                 Text("Disponible estimado: ${clp(plannedIncomeTotal - plannedCommitmentTotal)}", color = Ink, fontWeight = FontWeight.SemiBold)
-                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Color.Gray, fontSize = 12.sp)
+                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Muted, fontSize = 12.sp)
                             }
                         }
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Proyección de compromisos", color = Ink, fontWeight = FontWeight.Bold)
-                                Text("Incluye cuotas futuras y gastos recurrentes registrados.", color = Color.Gray, fontSize = 12.sp)
+                                Text("Incluye cuotas futuras y gastos recurrentes registrados.", color = Muted, fontSize = 12.sp)
                                 projections.forEach { projection ->
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(projection.label.replaceFirstChar { it.uppercase() }, color = Color.Gray, fontSize = 12.sp)
+                                        Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
                                         Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
@@ -389,7 +391,7 @@ class MainActivity : ComponentActivity() {
                                                 syncing = false
                                             }
                                         }
-                                    }, emphasized = true)
+                                    }, emphasized = true, enabled = !syncing)
                                 }
                                 ActionRow(Icons.Filled.Description, "Respaldo portátil", "Exportar o importar un archivo local", {
                                     syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json")
@@ -424,7 +426,7 @@ class MainActivity : ComponentActivity() {
                                             }.onFailure { error -> updateStatus = "No se pudo comprobar: ${error.message ?: "error de red"}" }
                                         }
                                     }
-                                })
+                                }, enabled = !checkingUpdate)
                                 availableUpdate?.let { update ->
                                     ActionRow(Icons.Filled.PlayArrow, "Instalar Brújula ${update.version}", "Descargar y abrir instalador de Android", {
                                         updateChecker.downloadAndInstall(update) { updateStatus = it }
@@ -464,7 +466,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (captured.isEmpty()) {
-                        item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Color.Gray, fontSize = 13.sp) }
+                        item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(captured) { event ->
                             CapturedEventRow(event) {
@@ -475,7 +477,7 @@ class MainActivity : ComponentActivity() {
                     }
                     item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
                     if (realCaptured.isEmpty()) {
-                        item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Color.Gray, fontSize = 13.sp) }
+                        item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(realCaptured) { event ->
                             CapturedExpenseRow(
@@ -499,7 +501,7 @@ class MainActivity : ComponentActivity() {
                             Icon(
                                 imageVector = when (tab) { 0 -> Icons.Filled.Home; 1 -> Icons.Filled.List; 3 -> Icons.Filled.BarChart; else -> Icons.Filled.Person },
                                 contentDescription = label,
-                                tint = if (selectedTab == tab) Green else Color.Gray
+                                tint = if (selectedTab == tab) Green else Muted
                             )
                         },
                         label = { Text(label, fontSize = 11.sp) }
@@ -584,10 +586,10 @@ class MainActivity : ComponentActivity() {
                 title = { Text("Cuenta cloud") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Usa un correo y contraseña sólo para la cuenta cloud de Brújula. No son tus credenciales bancarias.", color = Color.Gray, fontSize = 12.sp)
+                        Text("Usa un correo y contraseña sólo para la cuenta cloud de Brújula. No son tus credenciales bancarias.", color = Muted, fontSize = 12.sp)
                         OutlinedTextField(value = accountEmail, onValueChange = { accountEmail = it }, label = { Text("Correo") }, singleLine = true)
                         OutlinedTextField(value = accountPassword, onValueChange = { accountPassword = it }, label = { Text("Contraseña") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                        accountMessage?.let { Text(it, color = Color.Gray, fontSize = 12.sp) }
+                        accountMessage?.let { Text(it, color = Muted, fontSize = 12.sp) }
                         if (cloudAccountLabel != "Sin cuenta cloud") {
                             Text("Sesión activa: $cloudAccountLabel", color = Green, fontSize = 12.sp)
                             TextButton(onClick = {
@@ -637,7 +639,7 @@ class MainActivity : ComponentActivity() {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = goalInput, onValueChange = { goalInput = it }, label = { Text("Monto objetivo en pesos") }, singleLine = true)
-                        Text("Puede ser una meta de ahorro, ingreso o saldo disponible. Brújula no la interpretará por ti.", color = Color.Gray, fontSize = 12.sp)
+                        Text("Puede ser una meta de ahorro, ingreso o saldo disponible. Brújula no la interpretará por ti.", color = Muted, fontSize = 12.sp)
                         goalError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
                 },
@@ -699,7 +701,7 @@ class MainActivity : ComponentActivity() {
                                 FilterChip(selected = category == value, onClick = { category = value }, label = { Text(value.replaceFirstChar { it.uppercase() }) })
                             }
                         }
-                        Text("Deja las cuotas vacías si es un gasto recurrente sin término.", color = Color.Gray, fontSize = 12.sp)
+                        Text("Deja las cuotas vacías si es un gasto recurrente sin término.", color = Muted, fontSize = 12.sp)
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
                 },
@@ -739,14 +741,13 @@ class MainActivity : ComponentActivity() {
 }
 
 }
-}
 
 @Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = Color.Gray, fontSize = 12.sp)
+                Text(subtitle, color = Muted, fontSize = 12.sp)
             }
             TextButton(onClick = onDelete) { Text("Quitar") }
         }
@@ -787,7 +788,7 @@ class MainActivity : ComponentActivity() {
             Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
                 Icon(icon, contentDescription = null, tint = Green, modifier = Modifier.padding(7.dp).size(20.dp))
             }
-            Text(label, color = Color.Gray, fontSize = 11.sp, maxLines = 1)
+            Text(label, color = Muted, fontSize = 11.sp, maxLines = 1)
             Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
@@ -798,12 +799,15 @@ class MainActivity : ComponentActivity() {
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    emphasized: Boolean = false
+    emphasized: Boolean = false,
+    enabled: Boolean = true
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .sizeIn(minHeight = 56.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.6f)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -830,7 +834,7 @@ class MainActivity : ComponentActivity() {
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text("${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp)
+            Text("${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
         }
         Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
     }
@@ -840,7 +844,7 @@ class MainActivity : ComponentActivity() {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6F1))) {
         Column(Modifier.fillMaxWidth().padding(15.dp)) {
             Text(event.merchant ?: "Notificación sin comercio", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text(event.rawText, color = Color.Gray, fontSize = 12.sp, maxLines = 3)
+            Text(event.rawText, color = Muted, fontSize = 12.sp, maxLines = 3)
             Text("${event.statusLabel()} · ${event.receivedAtLabel()}${event.amount?.let { " · ${clp(it)}" } ?: ""}", color = Green, fontSize = 12.sp)
             if (event.status == "requires_review") TextButton(onClick = onReview) { Text("Marcar como revisado") }
         }
@@ -850,7 +854,7 @@ class MainActivity : ComponentActivity() {
 @Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onConfirm: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Color.Gray, fontSize = 12.sp) }
+            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
                 if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
