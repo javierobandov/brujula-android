@@ -312,10 +312,9 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 2) {
                     item {
                         Text("Captura", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text("Scotiabank se captura desde sus notificaciones. También puedes registrar un gasto manual.", color = Muted, fontSize = 13.sp)
+                        Text("Scotiabank se captura desde sus notificaciones. Esta sección controla ese permiso.", color = Muted, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                                ActionRow(Icons.Filled.Person, "Agregar gasto manual", "Para compras que no llegaron como notificación", { showManualDialog = true }, emphasized = true)
                                 ActionRow(Icons.Filled.Description, "Configurar notificaciones", "Activar acceso de captura de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                             }
                         }
@@ -323,31 +322,37 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 3) {
                     item {
-                        Text("Planificación mensual${if (planningVersion >= 0) "" else ""}", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("La vista que faltaba para llevar tu método de Excel: ingresos, compromisos y cuotas.", color = Muted, fontSize = 13.sp)
+                        Text("Planificación", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Text("Organiza ingresos, compromisos y una meta antes de gastar.", color = Muted, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Resumen planificado", color = Ink, fontWeight = FontWeight.Bold)
+                                Text("Resumen del plan", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                                 Text("Ingresos registrados: ${clp(plannedIncomeTotal)}", color = Green)
                                 Text("Compromisos activos: ${clp(plannedCommitmentTotal)}", color = Color(0xFF9A6500))
-                                Text("Disponible estimado: ${clp(plannedIncomeTotal - plannedCommitmentTotal)}", color = Ink, fontWeight = FontWeight.SemiBold)
-                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Muted, fontSize = 12.sp)
+                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Muted)
+                                HorizontalDivider(color = Color(0xFFE5ECE8))
+                                Text("Disponible después de compromisos y meta: ${clp(plannedAvailable)}", color = Ink, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Proyección de compromisos", color = Ink, fontWeight = FontWeight.Bold)
                                 Text("Incluye cuotas futuras y gastos recurrentes registrados.", color = Muted, fontSize = 12.sp)
-                                projections.forEach { projection ->
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
-                                        Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                if (projections.none { it.commitmentTotal > 0 }) {
+                                    Text("Aún no hay compromisos que proyectar. Agrégalos abajo para ver el calendario.", color = Muted, fontSize = 12.sp)
+                                } else {
+                                    projections.forEach { projection ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
+                                            Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
                                 }
                             }
                         }
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                                Text("Acciones del plan", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
                                 ActionRow(Icons.Filled.AccountBalanceWallet, "Agregar ingreso", "Sueldo, renta u otra entrada", { showIncomeDialog = true })
                                 ActionRow(Icons.Filled.Description, "Agregar compromiso o cuota", "Gastos recurrentes y cuotas futuras", { showCommitmentDialog = true })
                                 ActionRow(Icons.Filled.Check, "Configurar meta mensual", "Define cuánto quieres reservar", { showGoalDialog = true })
@@ -360,6 +365,8 @@ class MainActivity : ComponentActivity() {
                                     planningStore.deleteIncome(income.id); planningVersion++
                                 }
                             }
+                        } else {
+                            Text("Aún no has registrado ingresos. Agrégalos para calcular tu disponible.", color = Muted, fontSize = 12.sp)
                         }
                         if (activeCommitments.isNotEmpty()) {
                             Text("Compromisos activos", color = Ink, fontWeight = FontWeight.Bold)
@@ -369,6 +376,8 @@ class MainActivity : ComponentActivity() {
                                     planningStore.deleteCommitment(commitment.id); planningVersion++
                                 }
                             }
+                        } else {
+                            Text("Sin compromisos activos. Tu proyección se mantiene en cero.", color = Muted, fontSize = 12.sp)
                         }
                     }
                 }
@@ -450,7 +459,6 @@ class MainActivity : ComponentActivity() {
                     item {
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                                ActionRow(Icons.Filled.Person, "Agregar gasto manual", "Registrar una compra", { showManualDialog = true }, emphasized = true)
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                                 ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
                                     CapturedEventStore(activity).insertClassificationDemoEvents()
