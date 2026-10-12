@@ -30,8 +30,15 @@ jobs:
         working-directory: android
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: brujula-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Run emulator and capture screens
         uses: reactivecircus/android-emulator-runner@v2
+        continue-on-error: true
         with:
           api-level: 34
           target: google_apis
@@ -63,6 +70,7 @@ jobs:
 
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: brujula-visual-lab
           path: visual-lab/
