@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable fun BrujulaApp(activity: MainActivity) {
     var syncing by remember { mutableStateOf(false) }
+    var checkingUpdate by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     val updateChecker = remember { UpdateChecker(activity) }
@@ -70,7 +71,6 @@ class MainActivity : ComponentActivity() {
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
-    var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showCommitmentDialog by remember { mutableStateOf(false) }
@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 captured = CapturedEventStore(activity).recent()
+                updateChecker.resumePendingInstall { updateStatus = it }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -166,7 +167,7 @@ class MainActivity : ComponentActivity() {
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("BRÚJULA", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
+                        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0)), modifier = Modifier.clickable { selectedTab = 4 }) {
                             Icon(Icons.Filled.Person, contentDescription = "Cuenta", tint = Green, modifier = Modifier.padding(10.dp).size(26.dp))
                         }
                     }
@@ -211,6 +212,20 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 item {
+                    BreakdownCard(
+                        title = "Dónde se va el dinero",
+                        rows = categoryTotals.map { (category, amount) -> category.replaceFirstChar { it.uppercase() } to amount },
+                        emptyLabel = "Todavía no hay gastos categorizados."
+                    )
+                }
+                item {
+                    BreakdownCard(
+                        title = "Gasto por medio de pago",
+                        rows = paymentTotals.map { (source, amount) -> source.replace("_", " ").replaceFirstChar { it.uppercase() } to amount },
+                        emptyLabel = "Todavía no hay gastos con medio de pago identificado."
+                    )
+                }
+                item {
                     Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
                         Text("＋  Agregar gasto", fontSize = 16.sp)
                     }
@@ -229,57 +244,6 @@ class MainActivity : ComponentActivity() {
                                 recentSummary.forEach { event -> SummaryMovementRow(event) }
                             }
                         }
-                    }
-                }
-                if (showOperations) item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Herramientas", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                    Text("Acciones de prueba y configuración", color = Muted, fontSize = 12.sp)
-                                }
-                                TextButton(onClick = { showOperations = false }) { Text("Cerrar") }
-                            }
-                            ActionRow(Icons.Filled.Person, "Gasto manual", "Registrar una compra", { showManualDialog = true })
-                            ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
-                            ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
-                                CapturedEventStore(activity).insertClassificationDemoEvents()
-                                captured = CapturedEventStore(activity).recent()
-                            })
-                            Text("Los datos de prueba nunca entran al resumen real y la app no usa credenciales bancarias.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-                        }
-                    }
-                }
-                if (showOperations) item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Bandeja capturada", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { captured = CapturedEventStore(activity).recent() }) { Text("Actualizar") }
-                    }
-                }
-                if (showOperations && captured.isEmpty()) {
-                    item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Color.Gray, fontSize = 13.sp) }
-                } else if (showOperations) {
-                    items(captured) { event ->
-                        CapturedEventRow(event) {
-                            CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                            captured = CapturedEventStore(activity).recent()
-                        }
-                    }
-                }
-                if (showOperations) item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
-                if (showOperations && realCaptured.isEmpty()) {
-                    item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Color.Gray, fontSize = 13.sp) }
-                } else if (showOperations) {
-                    items(realCaptured) { event ->
-                        CapturedExpenseRow(
-                            event = event,
-                            onEditCategory = { editingEvent = event },
-                            onConfirm = {
-                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                captured = CapturedEventStore(activity).recent()
-                            }
-                        )
                     }
                 }
             }
@@ -416,9 +380,15 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Person, "Cuenta cloud", "Recuperar movimientos en otro teléfono", { showCloudAccountDialog = true })
                                 if (cloudAccountLabel != "Sin cuenta cloud") {
-                                    ActionRow(Icons.Filled.Check, "Sincronizar ahora", "Enviar y recuperar movimientos", {
-                                        syncStatus = "Sincronizando…"
-                                        firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result -> syncStatus = result }
+                                    ActionRow(Icons.Filled.Check, if (syncing) "Sincronizando…" else "Sincronizar ahora", "Enviar y recuperar movimientos", {
+                                        if (!syncing) {
+                                            syncing = true
+                                            syncStatus = "Sincronizando…"
+                                            firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result ->
+                                                syncStatus = result
+                                                syncing = false
+                                            }
+                                        }
                                     }, emphasized = true)
                                 }
                                 ActionRow(Icons.Filled.Description, "Respaldo portátil", "Exportar o importar un archivo local", {
@@ -441,7 +411,25 @@ class MainActivity : ComponentActivity() {
                                         putExtra(Intent.EXTRA_TEXT, chatGptBrief(monthlyBudget, total, monthExpenses, pendingReconciliation, reconciledCount))
                                     }, "Compartir resumen con ChatGPT"))
                                 })
-                                ActionRow(Icons.Filled.PlayArrow, "Herramientas avanzadas", "Pruebas y bandeja técnica", { showOperations = true; selectedTab = 5 })
+                                ActionRow(Icons.Filled.PlayArrow, "Herramientas avanzadas", "Pruebas y bandeja técnica", { selectedTab = 5 })
+                                ActionRow(Icons.Filled.Check, if (checkingUpdate) "Buscando actualización…" else "Buscar actualización", updateStatus ?: "Comprobar e instalar una nueva versión", {
+                                    if (!checkingUpdate) {
+                                        checkingUpdate = true
+                                        updateStatus = "Buscando actualización…"
+                                        updateChecker.check { result ->
+                                            checkingUpdate = false
+                                            result.onSuccess { update ->
+                                                availableUpdate = update
+                                                updateStatus = if (update == null) "Brújula ya está actualizada." else "Disponible Brújula ${update.version}."
+                                            }.onFailure { error -> updateStatus = "No se pudo comprobar: ${error.message ?: "error de red"}" }
+                                        }
+                                    }
+                                })
+                                availableUpdate?.let { update ->
+                                    ActionRow(Icons.Filled.PlayArrow, "Instalar Brújula ${update.version}", "Descargar y abrir instalador de Android", {
+                                        updateChecker.downloadAndInstall(update) { updateStatus = it }
+                                    }, emphasized = true)
+                                }
                             }
                         }
                         Text("Brújula no guarda credenciales bancarias, números de tarjeta ni el texto original al consultar ChatGPT.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
@@ -454,7 +442,7 @@ class MainActivity : ComponentActivity() {
                                 Text("Herramientas avanzadas", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                                 Text("Pruebas locales y bandeja técnica", color = Muted, fontSize = 13.sp)
                             }
-                            TextButton(onClick = { showOperations = false; selectedTab = 4 }) { Text("Volver") }
+                            TextButton(onClick = { selectedTab = 4 }) { Text("Volver") }
                         }
                     }
                     item {
@@ -483,6 +471,21 @@ class MainActivity : ComponentActivity() {
                                 CapturedEventStore(activity).updateStatus(event.id, "confirmed")
                                 captured = CapturedEventStore(activity).recent()
                             }
+                        }
+                    }
+                    item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
+                    if (realCaptured.isEmpty()) {
+                        item { Text("Aún no hay movimientos reales. Los eventos DEMO no se incluyen en el resumen.", color = Color.Gray, fontSize = 13.sp) }
+                    } else {
+                        items(realCaptured) { event ->
+                            CapturedExpenseRow(
+                                event = event,
+                                onEditCategory = { editingEvent = event },
+                                onConfirm = {
+                                    CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                    captured = CapturedEventStore(activity).recent()
+                                }
+                            )
                         }
                     }
                 }
@@ -749,6 +752,34 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun BreakdownCard(title: String, rows: List<Pair<String, Int>>, emptyLabel: String) {
+    val visibleRows = rows.filter { it.second > 0 }.sortedByDescending { it.second }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            if (visibleRows.isEmpty()) {
+                Text(emptyLabel, color = Muted, fontSize = 12.sp)
+            } else {
+                val maximum = visibleRows.maxOf { it.second }.coerceAtLeast(1)
+                visibleRows.take(6).forEach { (label, amount) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(label, color = Ink, fontSize = 12.sp)
+                            Text(clp(amount), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        LinearProgressIndicator(
+                            progress = { amount.toFloat() / maximum },
+                            modifier = Modifier.fillMaxWidth().height(7.dp),
+                            color = Green,
+                            trackColor = Color(0xFFE3EEE9)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable private fun SummaryMetric(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
     Card(modifier = modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -867,242 +898,3 @@ private fun chatGptBrief(
     appendLine("1. Resume los patrones principales sin inventar información.")
     appendLine("2. Indica qué movimientos debería revisar.")
     appendLine("3. Sugiere límites razonables para el próximo mes y explica el criterio.")
-    appendLine("4. Separa observaciones de recomendaciones y pide confirmación antes de proponer cambios.")
-}
-private fun CapturedEvent.statusLabel() = when (status) {
-    "demo" -> "DEMO"
-    "confirmed" -> "CONFIRMADO"
-    "reconciled" -> "CONCILIADO"
-    "requires_review" -> "REQUIERE_REVISION"
-    else -> "CAPTURADO"
-}
-private fun CapturedEvent.receivedAtLabel() = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL")).format(Date(receivedAt))
-private fun CapturedEvent.receivedAtShortLabel() = SimpleDateFormat("dd MMM, HH:mm", Locale("es", "CL")).format(Date(receivedAt))
-private fun Long.isCurrentMonth(): Boolean {
-    val event = Calendar.getInstance().apply { timeInMillis = this@isCurrentMonth }
-    val now = Calendar.getInstance()
-    return event.get(Calendar.YEAR) == now.get(Calendar.YEAR) && event.get(Calendar.MONTH) == now.get(Calendar.MONTH)
-}
-
-
-private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
-    put("schema_version", 1)
-    put("generated_at", System.currentTimeMillis())
-    put("events", JSONArray().apply {
-        events.forEach { event ->
-            put(JSONObject().apply {
-                put("fingerprint", event.fingerprint)
-                put("received_at", event.receivedAt)
-                put("source_package", event.sourcePackage)
-                put("raw_text", event.rawText)
-                put("amount", event.amount ?: JSONObject.NULL)
-                put("merchant", event.merchant ?: JSONObject.NULL)
-                put("movement_type", event.movementType)
-                put("category", event.category)
-                put("payment_source", event.paymentSource)
-                put("status", event.status)
-            })
-        }
-    })
-    planning?.let { put("planning", it) }
-}.toString(2)
-
-private fun importSyncBundle(activity: MainActivity, json: String): Int {
-    val root = runCatching { JSONObject(json) }.getOrNull() ?: return 0
-    if (root.optInt("schema_version", -1) != 1) return 0
-    val events = root.optJSONArray("events") ?: return 0
-    val store = CapturedEventStore(activity)
-    val importedEvents = (0 until events.length()).count { index ->
-        val event = events.optJSONObject(index) ?: return@count false
-        val fingerprint = event.optString("fingerprint").takeIf { it.isNotBlank() } ?: return@count false
-        val status = event.optString("status", "captured")
-        if (status == "demo" || status == "ignored") return@count false
-        store.insertSyncEvent(
-            fingerprint = fingerprint,
-            receivedAt = event.optLong("received_at", System.currentTimeMillis()),
-            sourcePackage = event.optString("source_package", "cl.brujula.app.sync"),
-            rawText = event.optString("raw_text"),
-            amount = if (event.isNull("amount")) null else event.optInt("amount"),
-            merchant = if (event.isNull("merchant")) null else event.optString("merchant"),
-            movementType = event.optString("movement_type", "expense"),
-            category = event.optString("category", "otros"),
-            paymentSource = event.optString("payment_source", "notificacion"),
-            status = status
-        )
-    }
-    PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
-    return importedEvents
-}
-private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
-    appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
-    events.forEach { event ->
-        appendLine(listOf(
-            event.receivedAtLabel(),
-            event.statusLabel(),
-            event.movementTypeLabel(),
-            event.categoryLabel(),
-            event.paymentSourceLabel(),
-            event.merchant.orEmpty(),
-            event.amount?.toString().orEmpty(),
-            event.sourcePackage,
-            event.rawText
-        ).joinToString(",") { csvCell(it) })
-    }
-}
-
-private fun CapturedEvent.movementTypeLabel() = when (movementType) {
-    "card_payment" -> "PAGO_TARJETA"
-    "refund" -> "DEVOLUCION"
-    "transfer" -> "TRANSFERENCIA"
-    else -> "GASTO"
-}
-
-
-private fun CapturedEvent.paymentSourceLabel() = when (paymentSource) {
-    "tarjeta_credito" -> "TARJETA"
-    "cuenta_corriente" -> "CUENTA_CORRIENTE"
-    "manual" -> "MANUAL"
-    else -> "NOTIFICACION"
-}
-
-private fun parseClpInput(value: String): Int? =
-    value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
-
-private fun CapturedEvent.categoryLabel() = when (category) {
-    "servicios" -> "SERVICIOS"
-    "casa" -> "CASA"
-    "supermercado" -> "SUPERMERCADO"
-    "salidas" -> "SALIDAS"
-    "auto" -> "AUTO"
-    "alimentacion" -> "SUPERMERCADO"
-    "transporte" -> "SALIDAS"
-    "suscripciones" -> "SERVICIOS"
-    "salud" -> "CASA"
-    else -> "OTROS"
-}
-
-private fun importStatementCsv(activity: MainActivity, csv: String): Int {
-    val rows = parseCsvRows(csv)
-    if (rows.size < 2) return 0
-    val header = rows.first().map { it.trim().lowercase(Locale.ROOT) }
-    fun indexOf(names: List<String>) = header.indexOfFirst { value -> names.any { name -> value.contains(name) } }
-    val dateIndex = indexOf(listOf("fecha"))
-    val merchantIndex = indexOf(listOf("comercio", "descrip", "detalle", "glosa", "concepto", "merchant"))
-    val amountIndex = indexOf(listOf("monto", "amount", "cargo", "debe", "debit"))
-    if (dateIndex < 0 || merchantIndex < 0 || amountIndex < 0) return 0
-    val store = CapturedEventStore(activity)
-    return rows.drop(1).count { row ->
-        if (row.size <= maxOf(dateIndex, merchantIndex, amountIndex)) return@count false
-        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull() ?: return@count false
-        if (amount <= 0) return@count false
-        val merchant = row[merchantIndex].trim()
-        if (merchant.isBlank()) return@count false
-        val receivedAt = parseStatementDate(row[dateIndex]) ?: System.currentTimeMillis()
-        store.insertStatementEvent(
-            receivedAt = receivedAt,
-            rawText = row.joinToString(" | "),
-            amount = amount,
-            merchant = merchant
-        )
-    }
-}
-
-private fun parseStatementDate(value: String): Long? {
-    val patterns = listOf("dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss")
-    return patterns.firstNotNullOfOrNull { pattern ->
-        runCatching { SimpleDateFormat(pattern, Locale("es", "CL")).parse(value.trim())?.time }.getOrNull()
-    }
-}
-
-private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
-    val rows = parseCsvRows(csv)
-    if (rows.size < 2) return 0
-    val header = rows.first().map { it.trim() }
-    fun indexOf(name: String) = header.indexOf(name)
-    val dateIndex = indexOf("fecha_hora")
-    val statusIndex = indexOf("estado")
-    val typeIndex = indexOf("tipo_movimiento")
-    val categoryIndex = indexOf("categoria")
-    val paymentIndex = indexOf("medio_pago")
-    val merchantIndex = indexOf("comercio")
-    val amountIndex = indexOf("monto")
-    val rawIndex = indexOf("texto_original")
-    if (listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex).any { it < 0 }) return 0
-    val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL"))
-    val store = CapturedEventStore(activity)
-    return rows.drop(1).count { row ->
-        val indexes = listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex)
-        if (row.size <= indexes.max()) return@count false
-        val statusLabel = row[statusIndex]
-        if (statusLabel == "DEMO") return@count false
-        val rawText = row[rawIndex]
-        val merchant = row[merchantIndex].takeIf { it.isNotBlank() }
-        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull()
-        val receivedAt = dateFormat.parse(row[dateIndex])?.time ?: System.currentTimeMillis()
-        store.insertImportedEvent(
-            receivedAt = receivedAt,
-            rawText = rawText,
-            amount = amount,
-            merchant = merchant,
-            movementType = row[typeIndex].toMovementType(),
-            category = row[categoryIndex].toCategory(),
-            paymentSource = row[paymentIndex].toPaymentSource(),
-            status = when (statusLabel) {
-                "CONFIRMADO" -> "confirmed"
-                "CONCILIADO" -> "reconciled"
-                "REQUIERE_REVISION" -> "requires_review"
-                else -> "captured"
-            }
-        )
-    }
-}
-
-private fun parseCsvRows(csv: String): List<List<String>> {
-    val rows = mutableListOf<List<String>>()
-    val row = mutableListOf<String>()
-    val field = StringBuilder()
-    var quoted = false
-    var index = 0
-    while (index < csv.length) {
-        val char = csv[index]
-        when {
-            char.code == 34 && quoted && index + 1 < csv.length && csv[index + 1].code == 34 -> { field.append(char); index++ }
-            char.code == 34 -> quoted = !quoted
-            char.code == 44 && !quoted -> { row += field.toString(); field.clear() }
-            (char.code == 10 || char.code == 13) && !quoted -> {
-                if (char.code == 13 && index + 1 < csv.length && csv[index + 1].code == 10) index++
-                row += field.toString(); field.clear()
-                if (row.any { it.isNotBlank() }) rows += row.toList()
-                row.clear()
-            }
-            else -> field.append(char)
-        }
-        index++
-    }
-    if (field.isNotEmpty() || row.isNotEmpty()) { row += field.toString(); rows += row.toList() }
-    return rows
-}
-
-private fun String.toMovementType() = when (this) {
-    "PAGO_TARJETA" -> "card_payment"
-    "DEVOLUCION" -> "refund"
-    "TRANSFERENCIA" -> "transfer"
-    else -> "expense"
-}
-
-private fun String.toCategory() = when (this) {
-    "ALIMENTACION" -> "alimentacion"
-    "TRANSPORTE" -> "transporte"
-    "SUSCRIPCIONES" -> "suscripciones"
-    "SALUD" -> "salud"
-    else -> "otros"
-}
-
-private fun String.toPaymentSource() = when (this) {
-    "TARJETA" -> "tarjeta_credito"
-    "CUENTA_CORRIENTE" -> "cuenta_corriente"
-    "MANUAL" -> "manual"
-    else -> "notificacion"
-}
-
-private fun csvCell(value: String): String = "\"${value.replace("\"", "\"\"")}\""
