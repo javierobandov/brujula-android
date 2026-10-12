@@ -10,7 +10,7 @@ def test_visual_contract() -> None:
         'Text("BRÚJULA"',
         'Text("Actividad reciente"',
         '1 to "Movimientos"',
-        'Text("Planificación mensual',
+        'Text("Planificación"',
         'Text("Cuenta"',
         '"Consultar con ChatGPT"',
     )
