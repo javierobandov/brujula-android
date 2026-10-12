@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,14 +54,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 
-private val Green = Color(0xFF237F6D)
-private val Paper = Color(0xFFF6F8F5)
-private val Ink = Color(0xFF1F2A27)
-private val Mint = Color(0xFFEAF6F1)
-private val Lavender = Color(0xFFF0E7FF)
-private val Muted = Color(0xFF6D7773)
+private val Green = Color(0xFF173F38)
+private val Paper = Color(0xFFF7F3E9)
+private val Ink = Color(0xFF172522)
+private val Mint = Color(0xFFDCEBE3)
+private val Lavender = Color(0xFFF4D9CF)
+private val Muted = Color(0xFF66736F)
+private val Coral = Color(0xFFE76548)
+private val Ochre = Color(0xFFF0C85B)
+private val Line = Color(0xFFD6DFD9)
 private val BudgetCategories = listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "deudas", "otros")
-private val CategoryColors = listOf(Color(0xFF237F6D), Color(0xFF3E8EDE), Color(0xFFF0A43C), Color(0xFFB665C3), Color(0xFF5C6BC0), Color(0xFFE57373), Color(0xFF7CB342), Color(0xFF8D6E63), Color(0xFF90A4AE))
+private val CategoryColors = listOf(Green, Coral, Ochre, Color(0xFF6C8E84), Color(0xFF8C6A57), Color(0xFFB86A6A), Color(0xFF7A9A72), Color(0xFF8B7767), Color(0xFF9CA9A4))
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { BrujulaApp(this) } }
@@ -180,10 +185,22 @@ class MainActivity : ComponentActivity() {
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Green,
+            onPrimary = Color.White,
+            secondary = Coral,
+            onSecondary = Ink,
+            tertiary = Ochre,
             background = Paper,
             surface = Color.White,
             onSurface = Ink,
             onBackground = Ink
+        ),
+        typography = Typography(
+            displayLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal, letterSpacing = (-1.4).sp),
+            headlineLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal, letterSpacing = (-1.1).sp),
+            titleLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal),
+            bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif),
+            bodyMedium = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif),
+            labelLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
         )
     ) {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
@@ -207,6 +224,9 @@ class MainActivity : ComponentActivity() {
                 }
                 item {
                     SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal)
+                }
+                item {
+                    BehaviorChartCard(calendarExpenses, netTotal, dailyAverage)
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,7 +322,7 @@ class MainActivity : ComponentActivity() {
                     }
                     item {
                         Text("REGISTRO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Movimientos", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Movimientos", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                         Text("Revisa, clasifica y confirma cada gasto.", color = Muted, fontSize = 14.sp)
                         OutlinedTextField(
                             value = movementQuery,
@@ -360,7 +380,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 2) {
                     item {
                         Text("AUTOMÁTICO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Captura", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Captura", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                         Text("Deja que Brújula registre tus gastos desde las notificaciones.", color = Muted, fontSize = 14.sp)
                         Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
                             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -378,7 +398,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 3) {
                     item {
                         Text("PLAN DEL MES", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Planificación", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Planificación", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                         Text("Decide cuánto puedes gastar antes de que ocurra.", color = Muted, fontSize = 14.sp)
                         Spacer(Modifier.height(6.dp))
                         PlanHeroCard(plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal, plannedAvailable)
@@ -465,7 +485,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedTab == 4) {
                     item {
                         Text("TU ESPACIO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Cuenta", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Cuenta", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                         Text(if (cloudAccountLabel == "Sin cuenta cloud") "Tus datos viven en este teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 14.sp)
                         Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -544,7 +564,7 @@ class MainActivity : ComponentActivity() {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("SOPORTE", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                                Text("Herramientas", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                                Text("Herramientas", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                                 Text("Pruebas locales y revisión técnica", color = Muted, fontSize = 14.sp)
                             }
                             TextButton(onClick = { selectedTab = 4 }) { Text("Volver") }
@@ -594,13 +614,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            NavigationBar(containerColor = Color.White) {
+            NavigationBar(containerColor = Paper, tonalElevation = 0.dp) {
                 listOf(0 to "Resumen", 1 to "Movimientos", 3 to "Planificación", 4 to "Cuenta").forEach { (tab, label) ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = Lavender,
+                            indicatorColor = Mint,
                             selectedIconColor = Green,
                             selectedTextColor = Ink,
                             unselectedIconColor = Muted,
@@ -899,19 +919,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun PlanHeroCard(income: Int, commitments: Int, goal: Int, available: Int) {
-    val availableColor = if (available >= 0) Color.White else Color(0xFFFFDAD6)
-    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val availableColor = if (available >= 0) Color.White else Coral
+    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column {
-                    Text("Disponible para gastar", color = Color(0xFFD4EEE4), fontSize = 13.sp)
-                    Text(clp(available), color = availableColor, fontSize = 31.sp, fontWeight = FontWeight.Bold)
+                    Text("Disponible para gastar", color = Color(0xFFC7DCD4), fontSize = 13.sp)
+                    Text(clp(available), color = availableColor, fontSize = 34.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                 }
-                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFF4E9A87))) {
-                    Text(if (available >= 0) "En control" else "Revisar plan", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = if (available >= 0) Color(0xFF2C5D52) else Coral)) {
+                    Text(if (available >= 0) "En control" else "Revisar plan", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
                 }
             }
-            HorizontalDivider(color = Color(0x557AB9AA))
+            HorizontalDivider(color = Color(0x557CA69A))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PlanMetric("Ingresos", income)
                 PlanMetric("Compromisos", commitments)
@@ -923,7 +943,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun PlanMetric(label: String, amount: Int) {
     Column(Modifier.widthIn(min = 74.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(label, color = Color(0xFFC7E7DE), fontSize = 11.sp)
+        Text(label, color = Color(0xFFC7DCD4), fontSize = 10.sp)
         Text(clp(amount), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
@@ -934,9 +954,9 @@ class MainActivity : ComponentActivity() {
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(modifier = modifier.heightIn(min = 112.dp).clickable(role = Role.Button, onClick = onClick), shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(modifier = modifier.heightIn(min = 104.dp).clickable(role = Role.Button, onClick = onClick), shape = RoundedCornerShape(10.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = when (label) { "Compromiso" -> Color(0xFFFFF0D6); "Meta" -> Lavender; else -> Mint })) {
+            Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = when (label) { "Compromiso" -> Color(0xFFF7E4B5); "Meta" -> Lavender; else -> Mint })) {
                 Icon(icon, contentDescription = label, tint = Green, modifier = Modifier.padding(9.dp).size(21.dp))
             }
             Text(label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -965,7 +985,7 @@ class MainActivity : ComponentActivity() {
     val average = if (daysInMonth > 0) expenses.sumOf { it.amount ?: 0 } / daysInMonth else 0
     val mostExpensive = totalsByDay.maxByOrNull { it.value }
     val monthLabel = SimpleDateFormat("MMMM yyyy", Locale("es", "CL")).format(firstDay.time).replaceFirstChar { it.uppercase() }
-    Card(shape = RoundedCornerShape(22.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
@@ -1031,27 +1051,64 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun BehaviorChartCard(expenses: List<CapturedEvent>, total: Int, dailyAverage: Int) {
+    val byDay = expenses.groupBy {
+        Calendar.getInstance().apply { timeInMillis = it.receivedAt }.get(Calendar.DAY_OF_MONTH)
+    }.mapValues { (_, events) -> events.sumOf { it.amount ?: 0 } }
+    val days = (1..Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)).toList()
+    val max = (byDay.values.maxOrNull() ?: 0).coerceAtLeast(1)
+    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF172F35))) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Column {
+                    Text("Ritmo de gasto", color = Color.White, fontSize = 17.sp, fontFamily = FontFamily.Serif)
+                    Text("Acumulado del mes frente a tu ritmo esperado", color = Color(0xFFB8CCC6), fontSize = 11.sp)
+                }
+                Text(clp(total), color = Ochre, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Canvas(Modifier.fillMaxWidth().height(112.dp).padding(top = 8.dp)) {
+                val step = size.width / (days.size - 1).coerceAtLeast(1)
+                val points = days.mapIndexed { index, day ->
+                    val amount = byDay[day] ?: 0
+                    androidx.compose.ui.geometry.Offset(index * step, size.height - (amount.toFloat() / max * size.height))
+                }
+                for (index in 1 until points.size) {
+                    drawLine(Color(0xFF67BEA9), points[index - 1], points[index], strokeWidth = 4f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                }
+                points.filterIndexed { index, _ -> (byDay[days[index]] ?: 0) > 0 }.forEach { point ->
+                    drawCircle(Ochre, radius = 4.5f, center = point)
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("1", color = Color(0xFFB8CCC6), fontSize = 9.sp)
+                Text("Promedio diario ${clp(dailyAverage)}", color = Color(0xFFB8CCC6), fontSize = 9.sp)
+                Text(days.last().toString(), color = Color(0xFFB8CCC6), fontSize = 9.sp)
+            }
+        }
+    }
+}
+
 @Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, commitments: Int, goal: Int) {
     val progress = (spent.toFloat() / (available + spent).coerceAtLeast(1)).coerceIn(0f, 1f)
-    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text("Disponible este mes", color = Muted, fontSize = 14.sp)
-                    Text(clp(available.coerceAtLeast(0)), color = Ink, fontSize = 31.sp, fontWeight = FontWeight.Bold)
+                    Text("Disponible para gastar", color = Muted, fontSize = 13.sp)
+                    Text(clp(available.coerceAtLeast(0)), color = Ink, fontSize = 35.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
                 }
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
                     CircularProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFF68B4A1),
-                        trackColor = Color(0xFFD4E9E2),
+                        color = Green,
+                        trackColor = Line,
                         strokeWidth = 8.dp
                     )
                     Text("${(progress * 100).toInt()}%", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(7.dp), color = Color(0xFF68B4A1), trackColor = Color(0xFFD4E9E2))
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(6.dp), color = Green, trackColor = Line)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column {
                     Text("Gasto del mes", color = Muted, fontSize = 12.sp)
