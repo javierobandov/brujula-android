@@ -734,6 +734,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+}
+
 @Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
