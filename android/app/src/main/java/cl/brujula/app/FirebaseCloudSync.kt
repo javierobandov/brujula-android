@@ -74,7 +74,7 @@ class FirebaseCloudSync(context: Context) {
                             fingerprint = fingerprint,
                             receivedAt = document.getLong("received_at") ?: System.currentTimeMillis(),
                             sourcePackage = document.getString("source_package") ?: "firebase",
-                            rawText = document.getString("raw_text").orEmpty(),
+                            rawText = document.getString("raw_text") ?: "Movimiento recuperado desde Brújula",
                             amount = document.getLong("amount")?.toInt(),
                             merchant = document.getString("merchant"),
                             movementType = document.getString("movement_type") ?: "expense",
@@ -109,7 +109,9 @@ class FirebaseCloudSync(context: Context) {
                     "fingerprint" to event.fingerprint,
                     "received_at" to event.receivedAt,
                     "source_package" to event.sourcePackage,
-                    "raw_text" to event.rawText,
+                    // The original bank notification can contain sensitive details.
+                    // Keep it local; the cloud only needs normalized accounting fields.
+                    "raw_text" to "Movimiento capturado localmente",
                     "amount" to event.amount,
                     "merchant" to event.merchant,
                     "movement_type" to event.movementType,
