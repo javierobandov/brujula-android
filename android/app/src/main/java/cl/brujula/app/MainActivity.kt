@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
@@ -197,37 +198,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 item {
-                    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F1))) {
-                        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Disponible real", color = Muted, fontSize = 15.sp)
-                                    Text(clp(realAvailable), color = if (realAvailable >= 0) Ink else Color(0xFFB3261E), fontSize = 36.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Box(Modifier.size(78.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(
-                                        progress = { (netTotal.toFloat() / plannedAvailable.coerceAtLeast(1)).coerceIn(0f, 1f) },
-                                        modifier = Modifier.fillMaxSize(),
-                                        color = Green,
-                                        trackColor = Color(0xFFCFE5DD),
-                                        strokeWidth = 10.dp
-                                    )
-                                    Text("${percent(netTotal, plannedAvailable)}%", color = Muted, fontSize = 13.sp)
-                                }
-                            }
-                            LinearProgressIndicator(progress = { (netTotal.toFloat() / plannedAvailable.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(10.dp), color = if (realAvailable >= 0) Green else Color(0xFFB3261E), trackColor = Color(0xFFE3EEE9))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                                Column {
-                                    Text("Gasto neto del mes", color = Muted, fontSize = 13.sp)
-                                    Text(clp(netTotal), color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Text("${percent(netTotal, plannedAvailable)}% del dinero disponible", color = Muted, fontSize = 12.sp)
-                            }
-                            Text("Ingresos ${clp(plannedIncomeTotal)} · compromisos ${clp(plannedCommitmentTotal)} · meta ${clp(monthlyGoal)}", color = Muted, fontSize = 12.sp)
-                            if (realAvailable < 0) Text("Has superado lo disponible en ${clp(-realAvailable)}.", color = Color(0xFFB3261E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            if (refunds > 0) Text("Devoluciones consideradas: ${clp(refunds)}", color = Green, fontSize = 12.sp)
-                        }
-                    }
+                    SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal)
                 }
                 item {
                     CalendarSpendingCard(
@@ -244,13 +215,6 @@ class MainActivity : ComponentActivity() {
                         onDaySelected = { selectedCalendarDay = it },
                         onViewMovements = { movementQuery = ""; movementFilter = "Todos"; selectedTab = 1 }
                     )
-                }
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Ingresos", clp(monthlyBudget), Ink, Modifier.weight(1f))
-                        SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
-                        SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), Color(0xFF9A6500), Modifier.weight(1f))
-                    }
                 }
                 item {
                     CategoryDistributionCard(categoryTotals, netTotal, categoryLimits, uncategorizedTotal)
@@ -324,9 +288,12 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(
                             value = movementQuery,
                             onValueChange = { movementQuery = it },
-                            label = { Text("Buscar movimiento") },
+                            placeholder = { Text("Buscar comercio, categoría o monto…") },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Green) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFFE3E8E5), focusedBorderColor = Green, unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Todos", "Pendientes", "Confirmados").forEach { filter ->
@@ -347,7 +314,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        Text("${visibleMovements.size} movimiento(s) visible(s)", color = Muted, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("${visibleMovements.size} movimiento(s) visible(s)", color = Muted, fontSize = 12.sp)
+                            TextButton(onClick = { selectedTab = 0 }) { Text("Ver calendario", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
                     }
                     if (visibleMovements.isEmpty()) {
                         item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Muted, fontSize = 13.sp) }
@@ -472,6 +442,17 @@ class MainActivity : ComponentActivity() {
                         Text("TU ESPACIO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text("Cuenta", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text(if (cloudAccountLabel == "Sin cuenta cloud") "Tus datos viven en este teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 14.sp)
+                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
+                            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFE1D2FF))) {
+                                    Icon(Icons.Filled.Person, contentDescription = null, tint = Green, modifier = Modifier.padding(11.dp).size(22.dp))
+                                }
+                                Column {
+                                    Text("Tus datos son tuyos", color = Ink, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("Brújula funciona sin enviar información a terceros.", color = Muted, fontSize = 12.sp)
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text("Sincronización", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -1018,6 +999,37 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, commitments: Int, goal: Int) {
+    val progress = (spent.toFloat() / (available + spent).coerceAtLeast(1)).coerceIn(0f, 1f)
+    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text("Disponible para gastar", color = Color(0xFFD4EEE4), fontSize = 13.sp)
+                    Text(clp(available), color = if (available >= 0) Color.White else Color(0xFFFFDAD6), fontSize = 31.sp, fontWeight = FontWeight.Bold)
+                }
+                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFF4E9A87))) {
+                    Text(if (available >= 0) "En control" else "Revisar", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+            }
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(7.dp), color = Color(0xFFA5D8C8), trackColor = Color(0x557AB9AA))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                SummaryHeroMetric("Gastado", spent)
+                SummaryHeroMetric("Ingresos", income)
+                SummaryHeroMetric("Meta", goal)
+            }
+            Text("Compromisos ${clp(commitments)}", color = Color(0xFFC7E7DE), fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable private fun SummaryHeroMetric(label: String, amount: Int) {
+    Column(Modifier.widthIn(min = 76.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = Color(0xFFC7E7DE), fontSize = 10.sp)
+        Text(clp(amount), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
 @Composable private fun CategoryDistributionCard(
     rows: List<Pair<String, Int>>,
     total: Int,
@@ -1173,12 +1185,25 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
-    Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6F1))) {
-        Column(Modifier.fillMaxWidth().padding(15.dp)) {
-            Text(event.merchant ?: "Notificación sin comercio", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text(event.rawText, color = Muted, fontSize = 12.sp, maxLines = 3)
-            Text("${event.statusLabel()} · ${event.receivedAtLabel()}${event.amount?.let { " · ${clp(it)}" } ?: ""}", color = Green, fontSize = 12.sp)
-            if (event.status == "requires_review") TextButton(onClick = onReview) { Text("Marcar como revisado") }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = if (event.status == "requires_review") Color(0xFFFFF0D6) else Mint)) {
+                    Icon(if (event.status == "requires_review") Icons.Filled.Warning else Icons.Filled.Description, contentDescription = null, tint = if (event.status == "requires_review") Color(0xFF9A6500) else Green, modifier = Modifier.padding(10.dp).size(20.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(event.merchant ?: "Movimiento sin comercio", color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("${categoryLabel(event.category)} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
+                }
+                Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+            if (event.status == "requires_review") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onReview) { Text("Marcar como revisado", color = Green, fontSize = 12.sp) }
+                }
+            } else {
+                Text(event.statusLabel(), color = Green, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
