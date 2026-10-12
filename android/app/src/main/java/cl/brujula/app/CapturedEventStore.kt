@@ -403,11 +403,13 @@ private fun classifyMovement(text: String): String {
 private fun classifyCategory(text: String): String {
     val normalized = text.lowercase(Locale.ROOT)
     return when {
-        listOf("jumbo", "lider", "unimarc", "supermercado", "mercado").any(normalized::contains) -> "supermercado"
-        listOf("uber", "recorrido", "taxi", "cabify", "transantiago", "salida").any(normalized::contains) -> "salidas"
-        listOf("netflix", "spotify", "youtube", "suscripcion", "suscripción", "verisure", "luz", "agua", "internet").any(normalized::contains) -> "servicios"
-        listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica", "casa", "arriendo").any(normalized::contains) -> "casa"
-        listOf("gasolina", "bencina", "copec", "shell", "auto", "estacionamiento").any(normalized::contains) -> "auto"
+        listOf("jumbo", "lider", "unimarc", "supermercado", "mercado", "verduleria", "verdulería", "panaderia", "panadería").any(normalized::contains) -> "alimentacion"
+        listOf("farmacia", "cruz verde", "salcobrand", "ahumada", "clinica", "clínica", "hospital", "dentista", "salud").any(normalized::contains) -> "salud"
+        listOf("arriendo", "alquiler", "condominio", "inmobiliaria", "muebles", "ferreteria", "ferretería").any(normalized::contains) -> "vivienda"
+        listOf("luz", "agua", "gas", "internet", "telefono", "teléfono", "netflix", "spotify", "youtube", "suscripcion", "suscripción", "verisure").any(normalized::contains) -> "servicios"
+        listOf("uber", "recorrido", "taxi", "cabify", "transantiago", "metro", "bencina", "gasolina", "copec", "shell", "auto", "estacionamiento", "peaje").any(normalized::contains) -> "transporte"
+        listOf("restaurante", "restaurant", "cafe", "café", "bar", "cine", "teatro", "salida", "concierto", "viaje", "hotel").any(normalized::contains) -> "ocio"
+        listOf("falabella", "paris", "ripley", "mall", "shopping", "tienda", "ropa", "zapateria", "zapatería", "amazon", "mercadolibre").any(normalized::contains) -> "compras"
         else -> "otros"
     }
 }
