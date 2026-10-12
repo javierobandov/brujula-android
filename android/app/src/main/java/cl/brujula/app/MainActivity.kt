@@ -246,12 +246,12 @@ class MainActivity : ComponentActivity() {
                 }
                 if (pendingReconciliation > 0 || uncategorizedTotal > 0) {
                     item {
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5))) {
+                        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5)), modifier = Modifier.clickable(role = Role.Button) { movementFilter = "Pendientes"; selectedTab = 1 }) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("Hay decisiones pendientes", color = Ink, fontWeight = FontWeight.Bold)
                                 if (pendingReconciliation > 0) Text("$pendingReconciliation movimientos requieren revisión.", color = Muted, fontSize = 12.sp)
                                 if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros y pueden mejorar tu análisis.", color = Muted, fontSize = 12.sp)
-                                TextButton(onClick = { selectedTab = 1 }) { Text("Revisar movimientos", color = Green) }
+                                TextButton(onClick = { movementFilter = "Pendientes"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green, fontWeight = FontWeight.Bold) }
                             }
                         }
                     }
@@ -297,8 +297,9 @@ class MainActivity : ComponentActivity() {
                         matchesFilter && matchesQuery && matchesPayment
                     }
                     item {
-                        Text("Tus movimientos", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("Busca por comercio o texto y filtra lo que requiere revisión.", color = Muted, fontSize = 13.sp)
+                        Text("REGISTRO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Movimientos", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Revisa, clasifica y confirma cada gasto.", color = Muted, fontSize = 14.sp)
                         OutlinedTextField(
                             value = movementQuery,
                             onValueChange = { movementQuery = it },
@@ -331,18 +332,33 @@ class MainActivity : ComponentActivity() {
                         item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(visibleMovements) { event ->
-                            CapturedEventRow(event) {
-                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                captured = CapturedEventStore(activity).recent()
+                            if (event.status == "requires_review" || event.status == "captured") {
+                                CapturedExpenseRow(
+                                    event = event,
+                                    onEditCategory = { editingEvent = event },
+                                    onConfirm = {
+                                        CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                        captured = CapturedEventStore(activity).recent(10_000)
+                                    }
+                                )
+                            } else {
+                                CapturedEventRow(event)
                             }
                         }
                     }
                 }
                 if (selectedTab == 2) {
                     item {
-                        Text("Captura", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text("Scotiabank se captura desde sus notificaciones. Esta sección controla ese permiso.", color = Muted, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Text("AUTOMÁTICO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Captura", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Deja que Brújula registre tus gastos desde las notificaciones.", color = Muted, fontSize = 14.sp)
+                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Captura de Scotiabank", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("La app solo lee las notificaciones autorizadas en Android. No necesita tus claves bancarias.", color = Muted, fontSize = 13.sp)
+                            }
+                        }
+                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Configurar notificaciones", "Activar acceso de captura de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                             }
@@ -351,66 +367,64 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 3) {
                     item {
-                        Text("Planificación", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text("Organiza ingresos, compromisos y una meta antes de gastar.", color = Muted, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Resumen del plan", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                Text("Ingresos registrados: ${clp(plannedIncomeTotal)}", color = Green)
-                                Text("Compromisos activos: ${clp(plannedCommitmentTotal)}", color = Color(0xFF9A6500))
-                                Text(if (monthlyGoal > 0) "Meta mensual: ${clp(monthlyGoal)}" else "Meta mensual: aún no configurada", color = Muted)
-                                HorizontalDivider(color = Color(0xFFE5ECE8))
-                                Text("Disponible después de compromisos y meta: ${clp(plannedAvailable)}", color = Ink, fontWeight = FontWeight.Bold)
-                            }
+                        Text("PLAN DEL MES", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Planificación", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Decide cuánto puedes gastar antes de que ocurra.", color = Muted, fontSize = 14.sp)
+                        PlanHeroCard(plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal, plannedAvailable)
+                        Text("Acciones rápidas", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PlanActionTile(Icons.Filled.AccountBalanceWallet, "Ingreso", { showIncomeDialog = true }, Modifier.weight(1f))
+                            PlanActionTile(Icons.Filled.Description, "Compromiso", { showCommitmentDialog = true }, Modifier.weight(1f))
+                            PlanActionTile(Icons.Filled.Check, "Meta", { showGoalDialog = true }, Modifier.weight(1f))
                         }
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val limitRows = BudgetCategories.map { category ->
+                            val spent = categoryTotals.firstOrNull { it.first == category }?.second ?: 0
+                            category to (spent to (categoryLimits[category] ?: 0))
+                        }.filter { it.second.first > 0 || it.second.second > 0 }
+                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("Límites por área", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                        Text("Compara lo planificado con lo que realmente gastas.", color = Muted, fontSize = 12.sp)
+                                        Text("Control por área", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                        Text("Gasto real frente a tus límites", color = Muted, fontSize = 12.sp)
                                     }
-                                    TextButton(onClick = { showCategoryLimitDialog = true }) { Text("Configurar", color = Green) }
+                                    TextButton(onClick = { showCategoryLimitDialog = true }) { Text("Editar", color = Green, fontWeight = FontWeight.Bold) }
                                 }
-                                val limitRows = BudgetCategories.map { category ->
-                                    val spent = categoryTotals.firstOrNull { it.first == category }?.second ?: 0
-                                    category to (spent to (categoryLimits[category] ?: 0))
-                                }.filter { it.second.first > 0 || it.second.second > 0 }
                                 if (limitRows.isEmpty()) {
-                                    Text("Aún no hay límites definidos. Configúralos para recibir alertas por área.", color = Muted, fontSize = 12.sp)
+                                    Text("Configura límites para saber dónde debes ajustar.", color = Muted, fontSize = 13.sp)
                                 } else {
-                                    limitRows.forEach { (category, values) ->
+                                    limitRows.sortedByDescending { it.second.first }.take(3).forEach { (category, values) ->
                                         CategoryLimitRow(category, values.first, values.second)
                                     }
+                                    if (limitRows.size > 3) Text("+ ${limitRows.size - 3} áreas configuradas", color = Muted, fontSize = 11.sp)
                                 }
                             }
                         }
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Proyección de compromisos", color = Ink, fontWeight = FontWeight.Bold)
-                                Text("Incluye cuotas futuras y gastos recurrentes registrados.", color = Muted, fontSize = 12.sp)
+                        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Lavender)) {
+                                        Icon(Icons.Filled.BarChart, contentDescription = null, tint = Green, modifier = Modifier.padding(9.dp).size(20.dp))
+                                    }
+                                    Column {
+                                        Text("Calendario de compromisos", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                        Text("Lo que ya está reservado en los próximos meses", color = Muted, fontSize = 12.sp)
+                                    }
+                                }
                                 if (projections.none { it.commitmentTotal > 0 }) {
-                                    Text("Aún no hay compromisos que proyectar. Agrégalos abajo para ver el calendario.", color = Muted, fontSize = 12.sp)
+                                    Text("Todavía no hay cuotas ni gastos recurrentes. Agrégalos para proyectar tu flujo.", color = Muted, fontSize = 13.sp)
                                 } else {
-                                    projections.forEach { projection ->
+                                    projections.take(4).forEach { projection ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
-                                            Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
                             }
                         }
-                        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                                Text("Acciones del plan", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
-                                ActionRow(Icons.Filled.AccountBalanceWallet, "Agregar ingreso", "Sueldo, renta u otra entrada", { showIncomeDialog = true })
-                                ActionRow(Icons.Filled.Description, "Agregar compromiso o cuota", "Gastos recurrentes y cuotas futuras", { showCommitmentDialog = true })
-                                ActionRow(Icons.Filled.Check, "Configurar meta mensual", "Define cuánto quieres reservar", { showGoalDialog = true })
-                            }
-                        }
                         if (planningStore.incomes().isNotEmpty()) {
-                            Text("Ingresos", color = Ink, fontWeight = FontWeight.Bold)
+                            Text("Ingresos registrados", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             planningStore.incomes().forEach { income ->
                                 PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente") {
                                     planningStore.deleteIncome(income.id); planningVersion++
@@ -420,7 +434,7 @@ class MainActivity : ComponentActivity() {
                             Text("Aún no has registrado ingresos. Agrégalos para calcular tu disponible.", color = Muted, fontSize = 12.sp)
                         }
                         if (activeCommitments.isNotEmpty()) {
-                            Text("Compromisos activos", color = Ink, fontWeight = FontWeight.Bold)
+                            Text("Compromisos activos", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             activeCommitments.forEach { commitment ->
                                 val installment = if (commitment.hasInstallments) "Cuota ${commitment.currentInstallment}/${commitment.totalInstallments}" else "Recurrente"
                                 PlanningRow("${commitment.name} · ${clp(commitment.amount)}", installment) {
@@ -434,8 +448,9 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 4) {
                     item {
-                        Text("Cuenta", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Todo funciona en el teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 13.sp)
+                        Text("TU ESPACIO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Cuenta", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text(if (cloudAccountLabel == "Sin cuenta cloud") "Tus datos viven en este teléfono. La nube es opcional." else "Cuenta activa: $cloudAccountLabel", color = Muted, fontSize = 14.sp)
                         Spacer(Modifier.height(4.dp))
                         Text("Sincronización", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -501,8 +516,9 @@ class MainActivity : ComponentActivity() {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Herramientas avanzadas", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                                Text("Pruebas locales y bandeja técnica", color = Muted, fontSize = 13.sp)
+                                Text("SOPORTE", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                                Text("Herramientas", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                                Text("Pruebas locales y revisión técnica", color = Muted, fontSize = 14.sp)
                             }
                             TextButton(onClick = { selectedTab = 4 }) { Text("Volver") }
                         }
@@ -791,7 +807,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf("servicios", "casa", "supermercado", "salidas", "auto").forEach { value ->
+                            listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { value ->
                                 FilterChip(selected = category == value, onClick = { category = value }, label = { Text(value.replaceFirstChar { it.uppercase() }) })
                             }
                         }
@@ -817,7 +833,7 @@ class MainActivity : ComponentActivity() {
                 title = { Text("Categoría del movimiento") },
                 text = {
                     Column {
-                        listOf("servicios", "casa", "supermercado", "salidas", "auto", "otros").forEach { category ->
+                                listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { category ->
                             TextButton(onClick = {
                                 CapturedEventStore(activity).updateCategory(event.id, category)
                                 captured = CapturedEventStore(activity).recent(10_000)
@@ -844,6 +860,52 @@ class MainActivity : ComponentActivity() {
                 Text(subtitle, color = Muted, fontSize = 12.sp)
             }
             TextButton(onClick = onDelete) { Text("Quitar") }
+        }
+    }
+}
+
+@Composable private fun PlanHeroCard(income: Int, commitments: Int, goal: Int, available: Int) {
+    val availableColor = if (available >= 0) Color.White else Color(0xFFFFDAD6)
+    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Column {
+                    Text("Disponible para gastar", color = Color(0xFFD4EEE4), fontSize = 13.sp)
+                    Text(clp(available), color = availableColor, fontSize = 31.sp, fontWeight = FontWeight.Bold)
+                }
+                Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFF4E9A87))) {
+                    Text(if (available >= 0) "En control" else "Revisar plan", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+            }
+            HorizontalDivider(color = Color(0x557AB9AA))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                PlanMetric("Ingresos", income)
+                PlanMetric("Compromisos", commitments)
+                PlanMetric("Meta", goal)
+            }
+        }
+    }
+}
+
+@Composable private fun PlanMetric(label: String, amount: Int) {
+    Column(Modifier.widthIn(min = 74.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = Color(0xFFC7E7DE), fontSize = 11.sp)
+        Text(clp(amount), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+@Composable private fun PlanActionTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(modifier = modifier.sizeIn(minHeight = 84.dp).clickable(role = Role.Button, onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = when (label) { "Compromiso" -> Color(0xFFFFF0D6); "Meta" -> Lavender; else -> Mint })) {
+                Icon(icon, contentDescription = label, tint = Green, modifier = Modifier.padding(9.dp).size(21.dp))
+            }
+            Text(label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
