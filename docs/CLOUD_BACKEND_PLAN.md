@@ -24,7 +24,7 @@ Campos mínimos:
 - `fingerprint`: identidad estable e idempotente.
 - `received_at`: fecha de captura.
 - `source_package`: origen técnico.
-- `raw_text`: evidencia original.
+- `raw_text`: marcador de recuperación; el texto original de la notificación permanece sólo en el dispositivo local.
 - `amount`, `merchant`.
 - `movement_type`, `category`, `payment_source`.
 - `status`.
@@ -58,7 +58,7 @@ La app ya contiene un adaptador opcional de Firebase y una acción de sincroniza
 5. Activar el proveedor Email/Password en Firebase Authentication.
 6. Crear o iniciar sesión desde la pantalla de cuenta cloud; Firebase mantiene la sesión segura en el dispositivo.
 7. Sincronizar en ambos sentidos por fingerprint desde el paquete JSON ya implementado; la recuperación remota conserva los datos locales existentes mediante inserción idempotente.
-8. Descargar cambios remotos por cursor y aplicar conflictos con precedencia de fuente.
+8. Descargar cambios remotos y aplicar conflictos por precedencia de estado: conciliado > confirmado > pendiente.
 9. Probar restauración en un segundo dispositivo.
 10. Publicar una release sólo después de validar reglas y recuperación.
 
