@@ -70,7 +70,6 @@ class MainActivity : ComponentActivity() {
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
-    val monthlyBudget = planningStore.incomes().sumOf { it.amount }
     var showOperations by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showIncomeDialog by remember { mutableStateOf(false) }
