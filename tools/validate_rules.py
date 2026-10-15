@@ -20,6 +20,9 @@ def main() -> None:
         raise SystemExit("Faltan garantías de Firestore: " + ", ".join(missing))
     if "allow read, write: if true" in rules or "allow write: if true" in rules:
         raise SystemExit("Las reglas no pueden quedar abiertas")
+    planning_read = rules.split("match /users/{userId}/planning/{documentId}", 1)[1].split("allow create, update:", 1)[0]
+    if "allow read: if request.auth != null" not in planning_read or "request.resource" in planning_read:
+        raise SystemExit("La lectura de planning debe autorizarse sin request.resource")
     print("Firestore rules: OK")
 
 

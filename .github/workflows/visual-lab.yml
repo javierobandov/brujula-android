@@ -10,7 +10,7 @@ on:
 jobs:
   screenshots:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,6 +21,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up Node.js for Firebase Emulator Suite
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@13.29.2
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -28,17 +36,26 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: >-
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+          -PBRUJULA_FIREBASE_API_KEY=demo-api-key
+          -PBRUJULA_FIREBASE_APP_ID=1:1234567890:android:abcdef1234567890
+          -PBRUJULA_FIREBASE_PROJECT_ID=demo-brujula
+          -PBRUJULA_FIREBASE_EMULATOR_HOST=10.0.2.2
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: brujula-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: brujula-debug-build
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Prepare test evidence directory
+        run: mkdir -p visual-lab
 
       - name: Run emulator and capture screens
         uses: reactivecircus/android-emulator-runner@v2
-        continue-on-error: true
         with:
           api-level: 34
           target: google_apis
@@ -46,31 +63,49 @@ jobs:
           profile: pixel_2
           force-avd-creation: true
           cores: 2
-          ram-size: 2048M
-          disk-size: 4096M
-          boot-timeout: 900
+          ram-size: 3072M
+          disk-size: 6144M
+          boot-timeout: 1200
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
           disable-animations: true
           script: |
-            timeout 120s adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            timeout 30s adb shell am force-stop cl.brujula.app || true
-            timeout 30s adb shell monkey -p cl.brujula.app 1
-            sleep 3
+            set -euo pipefail
             mkdir -p visual-lab
-            timeout 30s adb exec-out screencap -p > visual-lab/01-resumen.png
-            timeout 10s adb shell input tap 157 790
-            sleep 1
-            timeout 30s adb exec-out screencap -p > visual-lab/02-movimientos.png
-            timeout 10s adb shell input tap 262 790
-            sleep 1
-            timeout 30s adb exec-out screencap -p > visual-lab/03-planificacion.png
-            timeout 10s adb shell input tap 367 790
-            sleep 1
-            timeout 30s adb exec-out screencap -p > visual-lab/04-cuenta.png
+            firebase emulators:start --project demo-brujula --only auth,firestore > firebase-emulators.log 2>&1 &
+            firebase_pid=$!
+            evidence_dir="$GITHUB_WORKSPACE/visual-lab"
+            trap 'adb logcat -d > "$evidence_dir/logcat.txt" 2>&1 || true; adb pull /sdcard/Android/data/cl.brujula.app.test/files/test-evidence "$evidence_dir/screens" >/dev/null 2>&1 || true; cp "$GITHUB_WORKSPACE/firebase-emulators.log" "$evidence_dir/" 2>/dev/null || true; kill "$firebase_pid" 2>/dev/null || true' EXIT
+            for attempt in $(seq 1 90); do
+              if nc -z 127.0.0.1 9099 && nc -z 127.0.0.1 8080; then break; fi
+              if ! kill -0 "$firebase_pid" 2>/dev/null; then cat firebase-emulators.log; exit 1; fi
+              sleep 2
+            done
+            nc -z 127.0.0.1 9099
+            nc -z 127.0.0.1 8080
+            adb wait-for-device
+            package_ready=false
+            for attempt in $(seq 1 45); do
+              if adb shell cmd package list packages >/dev/null 2>&1; then package_ready=true; break; fi
+              sleep 2
+            done
+            test "$package_ready" = true
+            cd android
+            timeout 1200s ./gradlew :app:connectedDebugAndroidTest --no-daemon \
+              -PBRUJULA_FIREBASE_API_KEY=demo-api-key \
+              -PBRUJULA_FIREBASE_APP_ID=1:1234567890:android:abcdef1234567890 \
+              -PBRUJULA_FIREBASE_PROJECT_ID=demo-brujula \
+              -PBRUJULA_FIREBASE_EMULATOR_HOST=10.0.2.2 2>&1 | tee ../visual-lab/instrumentation.txt
+            cd "$GITHUB_WORKSPACE"
+            adb pull /sdcard/Android/data/cl.brujula.app.test/files/test-evidence visual-lab/screens
 
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: brujula-visual-lab
-          path: visual-lab/
+          path: |
+            visual-lab/
+            android/app/build/outputs/logs/
+            android/app/build/reports/androidTests/connected/
+            android/app/build/outputs/androidTest-results/connected/
+            firebase-emulators.log

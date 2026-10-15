@@ -79,7 +79,8 @@ class MainActivity : ComponentActivity() {
     val firebaseSync = remember { FirebaseCloudSync(activity) }
     var cloudAccountLabel by remember { mutableStateOf(firebaseSync.currentUserEmail() ?: "Sin cuenta cloud") }
     var showCloudAccountDialog by remember { mutableStateOf(false) }
-    var captured by remember { mutableStateOf(CapturedEventStore(activity).recent(10_000)) }
+    val eventStore = remember(activity) { CapturedEventStore(activity) }
+    var captured by remember { mutableStateOf(eventStore.recent(10_000)) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        val store = CapturedEventStore(activity)
+        val store = eventStore
         val imported = importStatementCsv(activity, csv)
         val reconciled = store.reconcileStatements()
         captured = store.recent(10_000)
@@ -110,20 +111,20 @@ class MainActivity : ComponentActivity() {
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importCapturedCsv(activity, csv)
-        captured = CapturedEventStore(activity).recent(10_000)
+        captured = eventStore.recent(10_000)
         importStatus = if (imported == 0) "No se encontraron movimientos nuevos en el CSV." else "Se importaron $imported movimientos; quedan pendientes de revisión."
     }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-            writer.write(capturedCsv(CapturedEventStore(activity).recent(10_000)))
+            writer.write(capturedCsv(eventStore.recent(10_000)))
         }
     }
     var syncStatus by remember { mutableStateOf<String?>(null) }
     val syncExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-            writer.write(syncBundleJson(CapturedEventStore(activity).recent(10_000), PlanningStore(activity).exportJson()))
+            writer.write(syncBundleJson(eventStore.recent(10_000), PlanningStore(activity).exportJson()))
         }
         syncStatus = "Paquete de sincronización exportado."
     }
@@ -131,20 +132,24 @@ class MainActivity : ComponentActivity() {
         uri ?: return@rememberLauncherForActivityResult
         val json = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importSyncBundle(activity, json)
-        captured = CapturedEventStore(activity).recent(10_000)
+        captured = eventStore.recent(10_000)
+        planningVersion++
         syncStatus = if (imported == 0) "No se encontraron movimientos nuevos en el paquete." else "Se incorporaron $imported movimientos nuevos."
     }
     LaunchedEffect(Unit) {
         while (true) {
             delay(15_000L)
-            captured = CapturedEventStore(activity).recent(10_000)
+            captured = eventStore.recent(10_000)
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(eventStore) {
+        onDispose { eventStore.close() }
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                captured = CapturedEventStore(activity).recent(10_000)
+                captured = eventStore.recent(10_000)
                 updateChecker.resumePendingInstall { updateStatus = it }
             }
         }
@@ -154,7 +159,7 @@ class MainActivity : ComponentActivity() {
     val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null }
     val pendingReconciliation = captured.count { it.status == "requires_review" }
     val reconciledCount = captured.count { it.status == "reconciled" }
-    val expenses = realCaptured.filter { it.movementType == "expense" }
+    val expenses = expenseMovements(realCaptured)
     val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
     val previousMonthExpenses = expenses.filter { it.receivedAt.isPreviousMonth() }
     val monthRefunds = realCaptured.filter { it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
@@ -164,24 +169,27 @@ class MainActivity : ComponentActivity() {
     val netTotal = (total - refunds).coerceAtLeast(0)
     val calendarExpenses = expenses.filter { it.receivedAt.isMonth(calendarYear, calendarMonth) }
     val planningStore = remember { PlanningStore(activity) }
+    val plannedIncomes = remember(planningVersion) { planningStore.incomes() }
+    val storedCommitments = remember(planningVersion) { planningStore.commitments() }
+    val storedCategoryLimits = remember(planningVersion) { planningStore.categoryLimits() }
     val categoryTotals = BudgetCategories
         .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.amount ?: 0 } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
         .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
-    val categoryLimits = planningStore.categoryLimits().associate { it.category.normalizedBudgetCategory() to it.amount }
+    val categoryLimits = storedCategoryLimits.associate { it.category.normalizedBudgetCategory() to it.amount }
     val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.amount ?: 0 }
-    val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
+    val plannedIncomeTotal = plannedIncomes.sumOf { it.amount }
     val monthlyBudget = plannedIncomeTotal
-    val activeCommitments = planningStore.commitments().filter { it.isActive }
+    val activeCommitments = storedCommitments.filter { it.isActive }
     val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
-    val monthlyGoal = planningStore.monthlyGoal()
+    val monthlyGoal = remember(planningVersion) { planningStore.monthlyGoal() }
     val plannedAvailable = plannedIncomeTotal - plannedCommitmentTotal - monthlyGoal
     val realAvailable = plannedAvailable - netTotal
     val daysElapsed = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
     val daysInMonth = Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
     val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
     val dailySafeAmount = if (daysElapsed < daysInMonth) (realAvailable.coerceAtLeast(0) / (daysInMonth - daysElapsed).coerceAtLeast(1)) else 0
-    val projections = planningStore.projections()
+    val projections = remember(planningVersion) { planningStore.projections() }
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Green,
@@ -367,8 +375,8 @@ class MainActivity : ComponentActivity() {
                                     event = event,
                                     onEditCategory = { editingEvent = event },
                                     onConfirm = {
-                                        CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                        captured = CapturedEventStore(activity).recent(10_000)
+                                        eventStore.updateStatus(event.id, "confirmed")
+                                        captured = eventStore.recent(10_000)
                                     }
                                 )
                             } else {
@@ -457,10 +465,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Spacer(Modifier.height(14.dp))
-                        if (planningStore.incomes().isNotEmpty()) {
+                        if (plannedIncomes.isNotEmpty()) {
                             Text("Ingresos registrados", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(2.dp))
-                            planningStore.incomes().forEach { income ->
+                            plannedIncomes.forEach { income ->
                                 PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente") {
                                     planningStore.deleteIncome(income.id); planningVersion++
                                 }
@@ -508,8 +516,10 @@ class MainActivity : ComponentActivity() {
                                         if (!syncing) {
                                             syncing = true
                                             syncStatus = "Sincronizando…"
-                                            firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result ->
+                                            firebaseSync.sync(eventStore.recent(10_000)) { result ->
                                                 syncStatus = result
+                                                captured = eventStore.recent(10_000)
+                                                planningVersion++
                                                 syncing = false
                                             }
                                         }
@@ -575,8 +585,8 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                                 ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
-                                    CapturedEventStore(activity).insertClassificationDemoEvents()
-                                    captured = CapturedEventStore(activity).recent(10_000)
+                                    eventStore.insertClassificationDemoEvents()
+                                    captured = eventStore.recent(10_000)
                                 })
                             }
                         }
@@ -584,7 +594,7 @@ class MainActivity : ComponentActivity() {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Bandeja capturada", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = { captured = CapturedEventStore(activity).recent(10_000) }) { Text("Actualizar") }
+                            TextButton(onClick = { captured = eventStore.recent(10_000) }) { Text("Actualizar") }
                         }
                     }
                     if (captured.isEmpty()) {
@@ -592,8 +602,8 @@ class MainActivity : ComponentActivity() {
                     } else {
                         items(captured) { event ->
                             CapturedEventRow(event) {
-                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                captured = CapturedEventStore(activity).recent(10_000)
+                                eventStore.updateStatus(event.id, "confirmed")
+                                captured = eventStore.recent(10_000)
                             }
                         }
                     }
@@ -606,8 +616,8 @@ class MainActivity : ComponentActivity() {
                                 event = event,
                                 onEditCategory = { editingEvent = event },
                                 onConfirm = {
-                                    CapturedEventStore(activity).updateStatus(event.id, "confirmed")
-                                    captured = CapturedEventStore(activity).recent(10_000)
+                                    eventStore.updateStatus(event.id, "confirmed")
+                                    captured = eventStore.recent(10_000)
                                 }
                             )
                         }
@@ -691,13 +701,13 @@ class MainActivity : ComponentActivity() {
                             manualMerchant.isBlank() -> manualError = "Escribe una descripción."
                             amount == null || amount <= 0 -> manualError = "Ingresa un monto válido."
                             else -> {
-                                CapturedEventStore(activity).insertManualExpense(
+                                eventStore.insertManualExpense(
                                     merchant = manualMerchant,
                                     amount = amount,
                                     category = manualCategory,
                                     paymentSource = manualSource
                                 )
-                                captured = CapturedEventStore(activity).recent(10_000)
+                                captured = eventStore.recent(10_000)
                                 showManualDialog = false
                             }
                         }
@@ -889,8 +899,8 @@ class MainActivity : ComponentActivity() {
                     Column {
                                 listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { category ->
                             TextButton(onClick = {
-                                CapturedEventStore(activity).updateCategory(event.id, category)
-                                captured = CapturedEventStore(activity).recent(10_000)
+                                eventStore.updateCategory(event.id, category)
+                                captured = eventStore.recent(10_000)
                                 editingEvent = null
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text(category.replaceFirstChar { it.uppercase() })
@@ -1330,6 +1340,7 @@ private class BudgetSettings(context: Context) {
 }
 private fun clp(amount: Int) = NumberFormat.getCurrencyInstance(Locale("es", "CL")).apply { maximumFractionDigits = 0 }.format(amount)
 private fun percent(amount: Int, budget: Int) = (amount.toFloat() / budget.coerceAtLeast(1) * 100).toInt()
+internal fun expenseMovements(events: List<CapturedEvent>) = events.filter { it.movementType == "expense" }
 private fun categoryLabel(category: String) = when (category) {
     "alimentacion", "supermercado" -> "Alimentación"
     "vivienda", "casa" -> "Vivienda"
@@ -1404,7 +1415,7 @@ private fun Long.isMonth(year: Int, month: Int): Boolean {
 }
 
 
-private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
+internal fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
     put("schema_version", 1)
     put("generated_at", System.currentTimeMillis())
     put("events", JSONArray().apply {
@@ -1426,7 +1437,7 @@ private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = 
     planning?.let { put("planning", it) }
 }.toString(2)
 
-private fun importSyncBundle(activity: MainActivity, json: String): Int {
+internal fun importSyncBundle(activity: MainActivity, json: String): Int {
     val root = runCatching { JSONObject(json) }.getOrNull() ?: return 0
     if (root.optInt("schema_version", -1) != 1) return 0
     val events = root.optJSONArray("events") ?: return 0
@@ -1450,9 +1461,10 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
         )
     }
     PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
+    store.close()
     return importedEvents
 }
-private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
+internal fun capturedCsv(events: List<CapturedEvent>): String = buildString {
     appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
     events.forEach { event ->
         appendLine(listOf(
@@ -1488,15 +1500,15 @@ private fun parseClpInput(value: String): Int? =
     value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
 
 private fun CapturedEvent.categoryLabel() = when (category) {
-    "servicios" -> "SERVICIOS"
-    "casa" -> "CASA"
+    "alimentacion" -> "ALIMENTACIÓN"
     "supermercado" -> "SUPERMERCADO"
-    "salidas" -> "SALIDAS"
-    "auto" -> "AUTO"
-    "alimentacion" -> "SUPERMERCADO"
-    "transporte" -> "SALIDAS"
-    "suscripciones" -> "SERVICIOS"
-    "salud" -> "CASA"
+    "casa", "vivienda" -> "VIVIENDA"
+    "auto", "transporte" -> "TRANSPORTE"
+    "ocio", "salidas" -> "OCIO"
+    "salud" -> "SALUD"
+    "servicios", "suscripciones" -> "SERVICIOS"
+    "compras" -> "COMPRAS"
+    "deudas" -> "DEUDAS"
     else -> "OTROS"
 }
 
@@ -1510,7 +1522,7 @@ private fun importStatementCsv(activity: MainActivity, csv: String): Int {
     val amountIndex = indexOf(listOf("monto", "amount", "cargo", "debe", "debit"))
     if (dateIndex < 0 || merchantIndex < 0 || amountIndex < 0) return 0
     val store = CapturedEventStore(activity)
-    return rows.drop(1).count { row ->
+    val imported = rows.drop(1).count { row ->
         if (row.size <= maxOf(dateIndex, merchantIndex, amountIndex)) return@count false
         val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull() ?: return@count false
         if (amount <= 0) return@count false
@@ -1524,6 +1536,8 @@ private fun importStatementCsv(activity: MainActivity, csv: String): Int {
             merchant = merchant
         )
     }
+    store.close()
+    return imported
 }
 
 private fun parseStatementDate(value: String): Long? {
@@ -1533,7 +1547,7 @@ private fun parseStatementDate(value: String): Long? {
     }
 }
 
-private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
+internal fun importCapturedCsv(activity: MainActivity, csv: String): Int {
     val rows = parseCsvRows(csv)
     if (rows.size < 2) return 0
     val header = rows.first().map { it.trim() }
@@ -1549,7 +1563,7 @@ private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
     if (listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex).any { it < 0 }) return 0
     val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale("es", "CL"))
     val store = CapturedEventStore(activity)
-    return rows.drop(1).count { row ->
+    val imported = rows.drop(1).count { row ->
         val indexes = listOf(dateIndex, statusIndex, typeIndex, categoryIndex, paymentIndex, merchantIndex, amountIndex, rawIndex)
         if (row.size <= indexes.max()) return@count false
         val statusLabel = row[statusIndex]
@@ -1574,6 +1588,8 @@ private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
             }
         )
     }
+    store.close()
+    return imported
 }
 
 private fun parseCsvRows(csv: String): List<List<String>> {
@@ -1610,10 +1626,15 @@ private fun String.toMovementType() = when (this) {
 }
 
 private fun String.toCategory() = when (this) {
-    "ALIMENTACION" -> "alimentacion"
-    "TRANSPORTE" -> "transporte"
-    "SUSCRIPCIONES" -> "suscripciones"
+    "ALIMENTACIÓN", "ALIMENTACION" -> "alimentacion"
+    "SUPERMERCADO" -> "supermercado"
+    "VIVIENDA", "CASA" -> "vivienda"
+    "TRANSPORTE", "AUTO" -> "transporte"
+    "OCIO", "SALIDAS" -> "ocio"
+    "SERVICIOS", "SUSCRIPCIONES" -> "servicios"
     "SALUD" -> "salud"
+    "COMPRAS" -> "compras"
+    "DEUDAS" -> "deudas"
     else -> "otros"
 }
 

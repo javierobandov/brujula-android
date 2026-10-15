@@ -24,6 +24,8 @@ data class CapturedEvent(
 class CapturedEventStore(context: Context) {
     private val helper = EventDb(context.applicationContext)
 
+    fun close() = helper.close()
+
     fun insertIfNew(sourcePackage: String, rawText: String, receivedAt: Long, status: String = "captured"): Boolean {
         val db = helper.writableDatabase
         val fingerprint = sha256("$sourcePackage|$rawText|${receivedAt / 60_000}")

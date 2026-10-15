@@ -10,6 +10,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 class FirebaseCloudSync(context: Context) {
     private val appContext = context.applicationContext
 
+    companion object {
+        private val emulatorConfiguredApps = mutableSetOf<String>()
+    }
+
     fun isConfigured(): Boolean =
         BuildConfig.FIREBASE_API_KEY.isNotBlank() &&
             BuildConfig.FIREBASE_APP_ID.isNotBlank() &&
@@ -83,6 +87,7 @@ class FirebaseCloudSync(context: Context) {
                             status = document.getString("status") ?: "captured"
                         )
                     }
+                    store.close()
                     planningDocument.get()
                         .addOnSuccessListener { planningSnapshot ->
                             val planningRecovered = if (planningSnapshot.exists()) planning.importCloudData(planningSnapshot.data.orEmpty()) else 0
@@ -97,9 +102,14 @@ class FirebaseCloudSync(context: Context) {
 
         fun commitChunk(index: Int) {
             if (index >= chunks.size) {
-                planningDocument.set(planning.cloudData())
-                    .addOnSuccessListener { pullRemote() }
-                    .addOnFailureListener { onResult("Movimientos sincronizados; no se pudo guardar la planificación cloud.") }
+                planningDocument.get()
+                    .addOnSuccessListener { snapshot ->
+                        if (snapshot.exists()) planning.importCloudData(snapshot.data.orEmpty())
+                        planningDocument.set(planning.cloudData())
+                            .addOnSuccessListener { pullRemote() }
+                            .addOnFailureListener { onResult("Movimientos sincronizados; no se pudo guardar la planificación cloud.") }
+                    }
+                    .addOnFailureListener { onResult("Movimientos sincronizados; no se pudo leer la planificación cloud.") }
                 return
             }
             val batch = firestore.batch()
@@ -138,7 +148,7 @@ class FirebaseCloudSync(context: Context) {
     private fun firebaseApp(): FirebaseApp? {
         if (!isConfigured()) return null
         return runCatching {
-            FirebaseApp.getApps(appContext).firstOrNull()
+            val app = FirebaseApp.getApps(appContext).firstOrNull()
                 ?: FirebaseApp.initializeApp(
                     appContext,
                     FirebaseOptions.Builder()
@@ -147,6 +157,17 @@ class FirebaseCloudSync(context: Context) {
                         .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
                         .build()
                 )
+            val emulatorHost = BuildConfig.FIREBASE_EMULATOR_HOST
+            if (app != null && emulatorHost.isNotBlank()) {
+                synchronized(emulatorConfiguredApps) {
+                    if (app.name !in emulatorConfiguredApps) {
+                        FirebaseAuth.getInstance(app).useEmulator(emulatorHost, 9099)
+                        FirebaseFirestore.getInstance(app).useEmulator(emulatorHost, 8080)
+                        emulatorConfiguredApps.add(app.name)
+                    }
+                }
+            }
+            app
         }.getOrNull()
     }
 }

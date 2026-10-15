@@ -166,6 +166,11 @@ class PlanningStore(context: Context) {
         val root = JSONObject().apply {
             put("schema_version", 1)
             put("monthly_goal", (data["monthly_goal"] as? Number)?.toInt() ?: 0)
+            put("category_limits", JSONArray().apply {
+                (data["category_limits"] as? List<*>)?.forEach { item ->
+                    (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }
+                }
+            })
             put("incomes", JSONArray().apply {
                 (data["incomes"] as? List<*>)?.forEach { item ->
                     (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }
