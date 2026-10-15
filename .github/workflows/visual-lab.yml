@@ -65,7 +65,7 @@ jobs:
           cores: 2
           ram-size: 3072M
           disk-size: 6144M
-          boot-timeout: 1200
+          emulator-boot-timeout: 1200
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
           disable-animations: true
           script: |
