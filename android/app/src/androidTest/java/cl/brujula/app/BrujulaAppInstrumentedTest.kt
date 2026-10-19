@@ -25,7 +25,7 @@ class BrujulaAppInstrumentedTest {
 
     @Test
     fun mainFlowsAndCardPaymentClassification() {
-        val evidenceDir = InstrumentationRegistry.getInstrumentation().context.getExternalFilesDir("test-evidence")!!
+        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().context.cacheDir, "test-evidence")
         evidenceDir.mkdirs()
         fun screenshot(name: String) {
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
