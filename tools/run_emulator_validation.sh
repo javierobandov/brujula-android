@@ -7,7 +7,7 @@ firebase emulators:start --config tools/firebase-emulator-ci.json --project demo
 firebase_pid=$!
 evidence_dir="$GITHUB_WORKSPACE/visual-lab"
 adb_serial="${ANDROID_SERIAL:-emulator-5554}"
-trap 'adb -s "$adb_serial" logcat -d > "$evidence_dir/logcat.txt" 2>&1 || true; adb -s "$adb_serial" shell run-as cl.brujula.app.test ls -la cache/test-evidence > "$evidence_dir/screenshot-files.txt" 2>&1 || true; adb -s "$adb_serial" exec-out run-as cl.brujula.app.test tar -C cache/test-evidence -cf - . 2>/dev/null | tar -xf - -C "$evidence_dir/screens" 2>/dev/null || true; cp "$GITHUB_WORKSPACE/firebase-emulators.log" "$evidence_dir/" 2>/dev/null || true; kill "$firebase_pid" 2>/dev/null || true' EXIT
+trap 'adb -s "$adb_serial" exec-out screencap -p > "$evidence_dir/screens/final-screen.png" 2>/dev/null || true; adb -s "$adb_serial" logcat -d > "$evidence_dir/logcat.txt" 2>&1 || true; adb -s "$adb_serial" shell run-as cl.brujula.app ls -la cache/test-evidence > "$evidence_dir/screenshot-files.txt" 2>&1 || true; adb -s "$adb_serial" exec-out run-as cl.brujula.app tar -C cache/test-evidence -cf - . 2>/dev/null | tar -xf - -C "$evidence_dir/screens" 2>/dev/null || true; cp "$GITHUB_WORKSPACE/firebase-emulators.log" "$evidence_dir/" 2>/dev/null || true; kill "$firebase_pid" 2>/dev/null || true' EXIT
 
 for attempt in $(seq 1 90); do
   if nc -z 127.0.0.1 9099 && nc -z 127.0.0.1 8080; then
