@@ -2,11 +2,11 @@
 set -euo pipefail
 
 cd "$GITHUB_WORKSPACE"
-mkdir -p visual-lab
+mkdir -p visual-lab/screens
 firebase emulators:start --project demo-brujula --only auth,firestore > firebase-emulators.log 2>&1 &
 firebase_pid=$!
 evidence_dir="$GITHUB_WORKSPACE/visual-lab"
-trap 'adb logcat -d > "$evidence_dir/logcat.txt" 2>&1 || true; adb pull /sdcard/Android/data/cl.brujula.app.test/files/test-evidence "$evidence_dir/screens" >/dev/null 2>&1 || true; cp "$GITHUB_WORKSPACE/firebase-emulators.log" "$evidence_dir/" 2>/dev/null || true; kill "$firebase_pid" 2>/dev/null || true' EXIT
+trap 'adb logcat -d > "$evidence_dir/logcat.txt" 2>&1 || true; adb exec-out run-as cl.brujula.app.test tar -C cache/test-evidence -cf - . 2>/dev/null | tar -xf - -C "$evidence_dir/screens" 2>/dev/null || true; cp "$GITHUB_WORKSPACE/firebase-emulators.log" "$evidence_dir/" 2>/dev/null || true; kill "$firebase_pid" 2>/dev/null || true' EXIT
 
 for attempt in $(seq 1 90); do
   if nc -z 127.0.0.1 9099 && nc -z 127.0.0.1 8080; then
@@ -46,5 +46,3 @@ else
 fi
 
 cd "$GITHUB_WORKSPACE"
-mkdir -p visual-lab/screens
-adb pull /sdcard/Android/data/cl.brujula.app.test/files/test-evidence visual-lab/screens
