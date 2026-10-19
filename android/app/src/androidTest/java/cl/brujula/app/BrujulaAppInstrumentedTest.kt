@@ -4,6 +4,7 @@ import android.app.Notification
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -25,7 +26,7 @@ class BrujulaAppInstrumentedTest {
 
     @Test
     fun mainFlowsAndCardPaymentClassification() {
-        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().context.cacheDir, "test-evidence")
+        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "test-evidence")
         evidenceDir.mkdirs()
         fun screenshot(name: String) {
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -36,7 +37,8 @@ class BrujulaAppInstrumentedTest {
         screenshot("01-resumen")
 
         val merchant = "Prueba UI ${UUID.randomUUID().toString().take(6)}"
-        compose.onNodeWithText("＋  Agregar gasto").performClick()
+        compose.onRoot().performTouchInput { swipeUp() }
+        compose.onNodeWithText("Agregar gasto", substring = true).performClick()
         compose.onNodeWithText("Comercio o descripción").performTextInput(merchant)
         compose.onNodeWithText("Monto en pesos").performTextInput("8400")
         compose.onNodeWithText("Guardar").performClick()
