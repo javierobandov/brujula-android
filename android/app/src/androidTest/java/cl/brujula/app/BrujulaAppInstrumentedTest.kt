@@ -48,7 +48,7 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText(merchant).assertExists()
         screenshot("02-registro-manual")
 
-        compose.onNodeWithText("Cuenta").performClick()
+        compose.onNodeWithText("Cuenta").onLast().performClick()
         compose.onNodeWithText("Herramientas avanzadas").performClick()
         screenshot("03-herramientas")
         compose.onNodeWithText("Probar clasificación").performClick()
