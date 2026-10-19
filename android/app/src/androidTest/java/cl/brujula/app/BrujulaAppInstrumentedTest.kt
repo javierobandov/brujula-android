@@ -4,11 +4,11 @@ import android.app.Notification
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -39,7 +39,7 @@ class BrujulaAppInstrumentedTest {
         screenshot("01-resumen")
 
         val merchant = "Prueba UI ${UUID.randomUUID().toString().take(6)}"
-        repeat(3) { compose.onRoot().performTouchInput { swipeUp() } }
+        compose.onNodeWithTag("main-screen-list").performScrollToNode(hasText("Agregar gasto", substring = true))
         compose.onNodeWithText("Agregar gasto", substring = true).performClick()
         compose.onNodeWithText("Comercio o descripción").performTextInput(merchant)
         compose.onNodeWithText("Monto en pesos").performTextInput("8400")
