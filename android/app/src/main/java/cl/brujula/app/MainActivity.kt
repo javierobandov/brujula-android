@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -214,7 +215,7 @@ class MainActivity : ComponentActivity() {
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
             LazyColumn(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).testTag("main-screen-list"),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
