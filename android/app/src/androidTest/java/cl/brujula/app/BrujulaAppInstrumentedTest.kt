@@ -28,7 +28,7 @@ class BrujulaAppInstrumentedTest {
 
     @Test
     fun mainFlowsAndCardPaymentClassification() {
-        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "test-evidence")
+        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().context.cacheDir, "test-evidence")
         evidenceDir.mkdirs()
         fun screenshot(name: String) {
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -39,7 +39,7 @@ class BrujulaAppInstrumentedTest {
         screenshot("01-resumen")
 
         val merchant = "Prueba UI ${UUID.randomUUID().toString().take(6)}"
-        compose.onRoot().performTouchInput { swipeUp() }
+        repeat(3) { compose.onRoot().performTouchInput { swipeUp() } }
         compose.onNodeWithText("Agregar gasto", substring = true).performClick()
         compose.onNodeWithText("Comercio o descripción").performTextInput(merchant)
         compose.onNodeWithText("Monto en pesos").performTextInput("8400")
