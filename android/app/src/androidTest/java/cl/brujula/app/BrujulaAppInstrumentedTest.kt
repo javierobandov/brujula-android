@@ -4,6 +4,7 @@ import android.app.Notification
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
@@ -48,7 +49,7 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText(merchant).assertExists()
         screenshot("02-registro-manual")
 
-        compose.onNodeWithText("Cuenta").last().performClick()
+        compose.onAllNodesWithText("Cuenta").onLast().performClick()
         compose.onNodeWithText("Herramientas avanzadas").performClick()
         screenshot("03-herramientas")
         compose.onNodeWithText("Probar clasificación").performClick()
