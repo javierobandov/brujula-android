@@ -45,7 +45,7 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText("Comercio o descripción").performTextInput(merchant)
         compose.onNodeWithText("Monto en pesos").performTextInput("8400")
         compose.onNodeWithText("Guardar").performClick()
-        compose.onNodeWithText("Movimientos").performClick()
+        compose.onNodeWithTag("nav-tab-1").performClick()
         compose.onNodeWithText(merchant).assertExists()
         screenshot("02-registro-manual")
 
