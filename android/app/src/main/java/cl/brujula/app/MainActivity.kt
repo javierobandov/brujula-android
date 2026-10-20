@@ -628,6 +628,7 @@ class MainActivity : ComponentActivity() {
             NavigationBar(containerColor = Paper, tonalElevation = 0.dp) {
                 listOf(0 to "Resumen", 1 to "Movimientos", 3 to "Planificación", 4 to "Cuenta").forEach { (tab, label) ->
                     NavigationBarItem(
+                        modifier = if (tab == 4) Modifier.testTag("nav-account-tab") else Modifier,
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
                         colors = NavigationBarItemDefaults.colors(
