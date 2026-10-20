@@ -29,7 +29,7 @@ class BrujulaAppInstrumentedTest {
 
     @Test
     fun mainFlowsAndCardPaymentClassification() {
-        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().context.cacheDir, "test-evidence")
+        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "test-evidence")
         evidenceDir.mkdirs()
         fun screenshot(name: String) {
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -50,6 +50,7 @@ class BrujulaAppInstrumentedTest {
         screenshot("02-registro-manual")
 
         compose.onAllNodesWithText("Cuenta").get(0).performClick()
+        compose.onNodeWithTag("main-screen-list").performScrollToNode(hasText("Herramientas avanzadas"))
         compose.onNodeWithText("Herramientas avanzadas").performClick()
         screenshot("03-herramientas")
         compose.onNodeWithText("Probar clasificación").performClick()
