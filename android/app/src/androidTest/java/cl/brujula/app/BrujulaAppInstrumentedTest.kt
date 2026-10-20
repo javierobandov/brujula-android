@@ -49,7 +49,7 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText(merchant).assertExists()
         screenshot("02-registro-manual")
 
-        compose.onNodeWithTag("nav-account-tab").performClick()
+        compose.onNodeWithTag("nav-tab-4").performClick()
         screenshot("03-cuenta")
         compose.onNodeWithTag("main-screen-list").performScrollToNode(hasText("Herramientas avanzadas"))
         compose.onNodeWithText("Herramientas avanzadas").performClick()
@@ -85,7 +85,7 @@ class BrujulaAppInstrumentedTest {
         store.close()
 
         compose.onNodeWithText("Actualizar").performClick()
-        compose.onNodeWithContentDescription("Movimientos").performClick()
+        compose.onNodeWithTag("nav-tab-1").performClick()
         compose.onNodeWithText("Comercio Sintético").performScrollTo()
         compose.onNodeWithText("Comercio Sintético").assertExists()
         compose.onNodeWithText("PAGO_TARJETA", substring = true).performScrollTo()
