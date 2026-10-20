@@ -37,15 +37,29 @@ adb -s "$adb_serial" reverse tcp:8080 tcp:8080
 adb -s "$adb_serial" reverse --list
 
 cd "$GITHUB_WORKSPACE/android"
-if timeout 1200s ./gradlew :app:connectedDebugAndroidTest --no-daemon \
+timeout 1200s ./gradlew :app:connectedDebugAndroidTest --no-daemon \
   -PBRUJULA_FIREBASE_API_KEY=demo-api-key \
   -PBRUJULA_FIREBASE_APP_ID=1:1234567890:android:abcdef1234567890 \
   -PBRUJULA_FIREBASE_PROJECT_ID=demo-brujula \
-  -PBRUJULA_FIREBASE_EMULATOR_HOST=127.0.0.1 > ../visual-lab/instrumentation.txt 2>&1; then
-  cat ../visual-lab/instrumentation.txt
-else
-  gradle_status=$?
-  cat ../visual-lab/instrumentation.txt
+  -PBRUJULA_FIREBASE_EMULATOR_HOST=127.0.0.1 > ../visual-lab/instrumentation.txt 2>&1 &
+gradle_pid=$!
+(
+  while kill -0 "$gradle_pid" 2>/dev/null; do
+    adb -s "$adb_serial" exec-out run-as cl.brujula.app tar -C cache/test-evidence -cf - . 2>/dev/null \
+      | tar -xf - -C "$evidence_dir/screens" 2>/dev/null || true
+    sleep 2
+  done
+  adb -s "$adb_serial" exec-out run-as cl.brujula.app tar -C cache/test-evidence -cf - . 2>/dev/null \
+    | tar -xf - -C "$evidence_dir/screens" 2>/dev/null || true
+) &
+capture_pid=$!
+set +e
+wait "$gradle_pid"
+gradle_status=$?
+wait "$capture_pid"
+set -e
+cat ../visual-lab/instrumentation.txt
+if [ "$gradle_status" -ne 0 ]; then
   exit "$gradle_status"
 fi
 
