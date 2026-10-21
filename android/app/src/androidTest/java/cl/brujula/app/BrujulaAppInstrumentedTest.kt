@@ -74,7 +74,7 @@ class BrujulaAppInstrumentedTest {
         assertEquals("tarjeta_credito", classifiedPurchase.paymentSource)
         store.close()
 
-        compose.onNodeWithContentDescription("Planificación").performClick()
+        compose.onNodeWithTag("nav-tab-3").performClick()
         compose.onNodeWithText("Ingreso").performClick()
         compose.onNodeWithText("Nombre: sueldo, DAP, Integra…").performTextInput("Ingreso de prueba")
         compose.onNodeWithText("Monto mensual").performTextInput("900000")
