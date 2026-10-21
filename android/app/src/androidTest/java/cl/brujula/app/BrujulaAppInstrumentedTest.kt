@@ -12,9 +12,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
-import java.io.File
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,15 +26,7 @@ class BrujulaAppInstrumentedTest {
 
     @Test
     fun mainFlowsAndCardPaymentClassification() {
-        val evidenceDir = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "test-evidence")
-        evidenceDir.mkdirs()
-        fun screenshot(name: String) {
-            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-                .takeScreenshot(File(evidenceDir, "$name.png"))
-        }
-
         compose.onNodeWithText("BRÚJULA").assertExists()
-        screenshot("01-resumen")
 
         val merchant = "Prueba UI ${UUID.randomUUID().toString().take(6)}"
         compose.onNodeWithTag("main-screen-list").performScrollToNode(hasText("Agregar gasto", substring = true))
@@ -47,13 +36,10 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText("Guardar").performClick()
         compose.onNodeWithTag("nav-tab-1").performClick()
         compose.onNodeWithText(merchant).assertExists()
-        screenshot("02-registro-manual")
 
         compose.onNodeWithTag("nav-tab-4").performClick()
-        screenshot("03-cuenta")
         compose.onNodeWithTag("main-screen-list").performScrollToNode(hasText("Herramientas avanzadas"))
         compose.onNodeWithText("Herramientas avanzadas").performClick()
-        screenshot("03-herramientas")
         compose.onNodeWithText("Probar clasificación").performClick()
         val store = CapturedEventStore(compose.activity)
         val demoEvents = store.recent(10_000).filter { it.status == "demo" }
@@ -90,10 +76,8 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText("Comercio Sintético").assertExists()
         compose.onNodeWithText("PAGO_TARJETA", substring = true).performScrollTo()
         compose.onNodeWithText("PAGO_TARJETA", substring = true).assertExists()
-        screenshot("04-compra-y-pago-tarjeta")
 
         compose.onNodeWithContentDescription("Planificación").performClick()
-        screenshot("05-planificacion")
         compose.onNodeWithText("Ingreso").performClick()
         compose.onNodeWithText("Nombre: sueldo, DAP, Integra…").performTextInput("Ingreso de prueba")
         compose.onNodeWithText("Monto mensual").performTextInput("900000")
@@ -107,7 +91,6 @@ class BrujulaAppInstrumentedTest {
         compose.onNodeWithText("Total cuotas").performTextInput("3")
         compose.onNodeWithText("Guardar").performClick()
         compose.onNodeWithText("Cuota de prueba", substring = true).assertExists()
-        screenshot("06-cuotas")
 
         val csvSeedStore = CapturedEventStore(compose.activity)
         csvSeedStore.insertManualExpense("CSV Servicio", 5_100, "servicios", "manual", testTime + 2)
@@ -142,6 +125,5 @@ class BrujulaAppInstrumentedTest {
         val backup = syncBundleJson(listOf(backupEvent), PlanningStore(compose.activity).exportJson())
         assertEquals(1, importSyncBundle(compose.activity, backup))
         assertEquals("La segunda importación JSON debe ser idempotente", 0, importSyncBundle(compose.activity, backup))
-        screenshot("07-exportacion-importacion")
     }
 }
