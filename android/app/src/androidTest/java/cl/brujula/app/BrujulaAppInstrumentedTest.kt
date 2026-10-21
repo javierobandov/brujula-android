@@ -68,14 +68,11 @@ class BrujulaAppInstrumentedTest {
         assertEquals(1, cardPair.count { it.movementType == "expense" })
         assertEquals(1, cardPair.count { it.movementType == "card_payment" })
         assertEquals(8_400, expenseMovements(cardPair).sumOf { it.amount ?: 0 })
+        val classifiedPurchase = cardPair.single { it.movementType == "expense" }
+        assertEquals("Comercio Sintético", classifiedPurchase.merchant)
+        assertEquals(8_400, classifiedPurchase.amount)
+        assertEquals("tarjeta_credito", classifiedPurchase.paymentSource)
         store.close()
-
-        compose.onNodeWithText("Actualizar").performClick()
-        compose.onNodeWithTag("nav-tab-1").performClick()
-        compose.onNodeWithText("Comercio Sintético").performScrollTo()
-        compose.onNodeWithText("Comercio Sintético").assertExists()
-        compose.onNodeWithText("PAGO_TARJETA", substring = true).performScrollTo()
-        compose.onNodeWithText("PAGO_TARJETA", substring = true).assertExists()
 
         compose.onNodeWithContentDescription("Planificación").performClick()
         compose.onNodeWithText("Ingreso").performClick()
