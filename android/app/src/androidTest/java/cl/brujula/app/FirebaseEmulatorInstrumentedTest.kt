@@ -19,6 +19,10 @@ class FirebaseEmulatorInstrumentedTest {
     fun syncAndRecoverEventsAndPlanningFromFirebaseEmulator() {
         assumeTrue("Firebase Emulator must be configured for this test", BuildConfig.FIREBASE_EMULATOR_HOST.isNotBlank())
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        // The visual-flow test runs in the same emulator and may leave synthetic local data behind.
+        context.deleteDatabase("finance_capture.db")
+        context.getSharedPreferences("brujula_planning", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
         val cloud = FirebaseCloudSync(context)
         val email = "test-${UUID.randomUUID()}@brujula.invalid"
         val password = UUID.randomUUID().toString().take(20) + "A1!"
