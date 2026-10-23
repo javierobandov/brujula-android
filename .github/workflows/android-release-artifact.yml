@@ -1,0 +1,68 @@
+name: Android signed release artifact
+
+on:
+  push:
+    branches:
+      - codex/reconciliation-cloud-recovery
+    paths:
+      - .github/workflows/android-release-artifact.yml
+
+permissions:
+  contents: read
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and verify signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          BRUJULA_STORE_PASSWORD: ${{ secrets.BRUJULA_STORE_PASSWORD }}
+          BRUJULA_KEY_ALIAS: ${{ secrets.BRUJULA_KEY_ALIAS }}
+          BRUJULA_KEY_PASSWORD: ${{ secrets.BRUJULA_KEY_PASSWORD }}
+          BRUJULA_STORE_FILE: ${{ runner.temp }}/brujula-release.jks
+          BRUJULA_FIREBASE_API_KEY: "AIzaSyCXOpiyFqelv3ZrtNCSz5CLvIia3HJCt14"
+          BRUJULA_FIREBASE_APP_ID: "1:545175051996:android:8a6efb9a1bf6d6e3651e19"
+          BRUJULA_FIREBASE_PROJECT_ID: "brujula-finanzas-20261011"
+        run: |
+          set -euo pipefail
+          : "${ANDROID_KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64}"
+          : "${BRUJULA_STORE_PASSWORD:?Missing BRUJULA_STORE_PASSWORD}"
+          : "${BRUJULA_KEY_ALIAS:?Missing BRUJULA_KEY_ALIAS}"
+          : "${BRUJULA_KEY_PASSWORD:?Missing BRUJULA_KEY_PASSWORD}"
+          signing_file="$RUNNER_TEMP/brujula-release.jks"
+          trap 'rm -f "$signing_file"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$signing_file"
+          chmod 600 "$signing_file"
+          test -s "$signing_file"
+          ./gradlew --no-daemon assembleRelease -PversionCode=52 -PversionName=0.28.0
+          apk="app/build/outputs/apk/release/app-release.apk"
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.1/aapt" dump badging "$apk" | sed -n '1p'
+          sha256sum "$apk"
+
+      - name: Upload private build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brujula-release-v0.28.0-code-52
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
