@@ -9,12 +9,10 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import org.junit.After
-import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,41 +27,38 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class FirebaseCloudSyncEmulatorTest {
-    companion object {
-        private lateinit var context: Context
-        private lateinit var app: FirebaseApp
-        private lateinit var auth: FirebaseAuth
-        private lateinit var firestore: FirebaseFirestore
-
-        @JvmStatic
-        @BeforeClass
-        fun initializeFirebaseEmulators() {
-            context = ApplicationProvider.getApplicationContext()
-            app = FirebaseApp.initializeApp(
-                context,
-                FirebaseOptions.Builder()
-                    .setApplicationId("1:1234567890:android:synthetic")
-                    .setApiKey("fake-api-key")
-                    .setProjectId("demo-brujula")
-                    .build(),
-                "brujula-emulator-test-${UUID.randomUUID()}"
-            )
-            auth = FirebaseAuth.getInstance(app).apply { useEmulator("127.0.0.1", 9099) }
-            firestore = FirebaseFirestore.getInstance(app).apply { useEmulator("127.0.0.1", 8080) }
-        }
-
-        @JvmStatic
-        @AfterClass
-        fun deleteFirebaseApp() {
-            if (::app.isInitialized) app.delete()
-        }
-    }
+    private lateinit var context: Context
+    private lateinit var app: FirebaseApp
+    private lateinit var auth: FirebaseAuth
+    private lateinit var firestore: FirebaseFirestore
 
     @Before
     fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase("finance_capture.db")
         context.getSharedPreferences("brujula_planning", Context.MODE_PRIVATE).edit().clear().commit()
+        val existingApp = FirebaseApp.getApps(context).firstOrNull { it.name == EMULATOR_APP_NAME }
+        val isNewApp = existingApp == null
+        app = existingApp ?: FirebaseApp.initializeApp(
+            context,
+            FirebaseOptions.Builder()
+                .setApplicationId("1:1234567890:android:synthetic")
+                .setApiKey("fake-api-key")
+                .setProjectId("demo-brujula")
+                .build(),
+            EMULATOR_APP_NAME
+        )
+        auth = FirebaseAuth.getInstance(app)
+        firestore = FirebaseFirestore.getInstance(app)
+        if (isNewApp) {
+            auth.useEmulator("127.0.0.1", 9099)
+            firestore.useEmulator("127.0.0.1", 8080)
+        }
         awaitTask(auth.createUserWithEmailAndPassword("test-${UUID.randomUUID()}@example.test", "synthetic-password-123"))
+    }
+
+    private companion object {
+        const val EMULATOR_APP_NAME = "brujula-emulator-test"
     }
 
     @After
