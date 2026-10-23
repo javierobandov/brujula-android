@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.testing.Test
 
 val firebaseApiKey = providers.gradleProperty("BRUJULA_FIREBASE_API_KEY").orNull ?: System.getenv("BRUJULA_FIREBASE_API_KEY") ?: ""
 val firebaseAppId = providers.gradleProperty("BRUJULA_FIREBASE_APP_ID").orNull ?: System.getenv("BRUJULA_FIREBASE_APP_ID") ?: ""
@@ -20,6 +21,7 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         versionName = providers.gradleProperty("versionName").getOrElse("0.28.0")
     }
     buildFeatures { buildConfig = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     defaultConfig {
         buildConfigField("String", "FIREBASE_API_KEY", quotedBuildConfig(firebaseApiKey))
         buildConfigField("String", "FIREBASE_APP_ID", quotedBuildConfig(firebaseAppId))
@@ -60,6 +62,9 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.compose.material3:material3")
@@ -76,4 +81,15 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+val runFirebaseEmulatorTests = providers.gradleProperty("runFirebaseEmulatorTests").orNull == "true"
+tasks.withType<Test>().configureEach {
+    filter {
+        if (runFirebaseEmulatorTests) {
+            includeTestsMatching("cl.brujula.app.FirebaseCloudSyncEmulatorTest")
+        } else {
+            excludeTestsMatching("cl.brujula.app.FirebaseCloudSyncEmulatorTest")
+        }
+    }
 }
