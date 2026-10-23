@@ -116,7 +116,77 @@ class FirebaseCloudSyncEmulatorTest {
         assertEquals(1L, planning.getLong("schema_version"))
     }
 
+    @Test
+    fun failedServerReadDoesNotUploadAndRetryRecoversLocalEvent() {
+        val userId = requireNotNull(auth.currentUser?.uid)
+        val fingerprint = "retry-${UUID.randomUUID()}"
+        val store = CapturedEventStore(context)
+        store.insertSyncEvent(
+            fingerprint = fingerprint,
+            receivedAt = 1_800_000_000_200L,
+            sourcePackage = "cl.brujula.app.manual",
+            rawText = "Registro local sintético",
+            amount = 8_000,
+            merchant = "Comercio Local",
+            movementType = "expense",
+            category = "otros",
+            paymentSource = "debito",
+            status = "captured"
+        )
+
+        awaitTask(firestore.disableNetwork())
+        val failedResult = syncAndAwaitResult()
+        assertTrue("Expected a server-read failure, got: $failedResult", failedResult?.contains("no se subieron cambios") == true)
+        awaitTask(firestore.enableNetwork())
+
+        syncAndAwait()
+        val cloudEvent = requireNotNull(awaitTask(
+            firestore.collection("users").document(userId).collection("events").document(fingerprint).get(Source.SERVER),
+        ))
+        assertTrue(cloudEvent.exists())
+        assertEquals(8_000L, cloudEvent.getLong("amount"))
+    }
+
+    @Test
+    fun recoversAndUploadsAcrossFirestoreBatchBoundary() {
+        val userId = requireNotNull(auth.currentUser?.uid)
+        val collection = firestore.collection("users").document(userId).collection("events")
+        val total = 451
+        (0 until total).chunked(400).forEach { indexes ->
+            val batch = firestore.batch()
+            indexes.forEach { index ->
+                val fingerprint = "bulk-$index-${UUID.randomUUID()}"
+                batch.set(collection.document(fingerprint), mapOf(
+                    "schema_version" to 1,
+                    "fingerprint" to fingerprint,
+                    "received_at" to 1_800_000_000_000L + index,
+                    "source_package" to "cl.brujula.app.statement",
+                    "raw_text" to "synthetic",
+                    "amount" to index + 1,
+                    "merchant" to "Synthetic merchant $index",
+                    "movement_type" to "expense",
+                    "category" to "otros",
+                    "payment_source" to "cartola",
+                    "status" to "requires_review"
+                ))
+            }
+            awaitTask(batch.commit())
+        }
+
+        syncAndAwait()
+
+        val localEvents = CapturedEventStore(context).recent(Int.MAX_VALUE)
+        assertEquals(total, localEvents.size)
+        val cloudEvents = requireNotNull(awaitTask(collection.get(Source.SERVER)))
+        assertEquals(total, cloudEvents.size())
+    }
+
     private fun syncAndAwait() {
+        val result = syncAndAwaitResult()
+        assertTrue("Firebase sync reported an error: $result", result?.startsWith("Sincronizados ") == true)
+    }
+
+    private fun syncAndAwaitResult(): String? {
         val latch = CountDownLatch(1)
         var result: String? = null
         FirebaseCloudSync(context).sync(emptyList(), PlanningStore(context)) {
@@ -130,7 +200,7 @@ class FirebaseCloudSyncEmulatorTest {
             latch.await(10, TimeUnit.MILLISECONDS)
         }
         assertEquals("Firebase sync callback timed out", 0L, latch.count)
-        assertTrue("Firebase sync reported an error: $result", result?.startsWith("Sincronizados ") == true)
+        return result
     }
 
     private fun <T> awaitTask(task: Task<T>): T? {
