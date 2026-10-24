@@ -55,7 +55,7 @@ import org.json.JSONObject
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
-import com.tom_roush.pdfbox.android.PdfBoxResourceLoader
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 
@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val imported = runCatching {
-            PdfBoxResourceLoader.init(activity.applicationContext)
+            PDFBoxResourceLoader.init(activity.applicationContext)
             val text = activity.contentResolver.openInputStream(uri)?.use { input ->
                 PDDocument.load(input).use { document -> PDFTextStripper().apply { sortByPosition = true }.getText(document) }
             }.orEmpty()
