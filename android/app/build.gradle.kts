@@ -17,8 +17,8 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         applicationId = "cl.brujula.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("versionCode").getOrElse("29").toInt()
-        versionName = providers.gradleProperty("versionName").getOrElse("0.29.0")
+        versionCode = providers.gradleProperty("versionCode").getOrElse("30").toInt()
+        versionName = providers.gradleProperty("versionName").getOrElse("0.30.0")
     }
     buildFeatures { buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")

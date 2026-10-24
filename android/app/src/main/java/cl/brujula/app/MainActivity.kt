@@ -55,6 +55,9 @@ import org.json.JSONObject
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 
 private val Green = Color(0xFF173F38)
 private val Paper = Color(0xFFF7F3E9)
@@ -102,12 +105,34 @@ class MainActivity : ComponentActivity() {
     var selectedCalendarDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val imported = runCatching {
+            PDFBoxResourceLoader.init(activity.applicationContext)
+            val text = activity.contentResolver.openInputStream(uri)?.use { input ->
+                PDDocument.load(input).use { document -> PDFTextStripper().apply { sortByPosition = true }.getText(document) }
+            }.orEmpty()
+            val year = Regex("(?:19|20)[0-9]{2}").find(text)?.value?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+            val rows = ScotiaStatementPdfParser.parse(text, year)
+            val store = CapturedEventStore(activity)
+            rows.count { row ->
+                store.insertStatementEvent(
+                    receivedAt = row.receivedAt,
+                    rawText = "Scotiabank PDF | ${row.movementType} | ${row.merchant} | ${row.amount}" +
+                        (row.installment?.let { " | cuota $it" } ?: "") + " | fila ${row.occurrence}",
+                    amount = row.amount,
+                    merchant = row.merchant,
+                    movementType = row.movementType,
+                    category = row.category,
+                    paymentSource = row.paymentSource
+                )
+            }
+        }.getOrElse {
+            statementStatus = "No se pudo leer la cartola PDF. Verifica que sea una cartola Scotiabank con texto seleccionable."
+            return@rememberLauncherForActivityResult
+        }
         val store = CapturedEventStore(activity)
-        val imported = importStatementCsv(activity, csv)
         val reconciled = store.reconcileStatements()
         captured = store.recent(10_000)
-        statementStatus = if (imported == 0) "No se reconocieron movimientos de cartola." else "Cartola: $imported movimientos importados; $reconciled conciliados automáticamente."
+        statementStatus = if (imported == 0) "No se encontraron movimientos nuevos en la cartola PDF." else "Cartola PDF: $imported movimientos nuevos; $reconciled conciliados automáticamente. Los demás requieren revisión."
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -523,6 +548,10 @@ class MainActivity : ComponentActivity() {
                                 ActionRow(Icons.Filled.Description, "Respaldo portátil", "Exportar o importar un archivo local", {
                                     syncExportLauncher.launch("brujula-sync-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.json")
                                 })
+                                ActionRow(Icons.Filled.Description, "Importar cartola Scotiabank PDF", "Guardar movimientos para revisar y conciliar", {
+                                    statementLauncher.launch(arrayOf("application/pdf"))
+                                })
+                                statementStatus?.let { Text(it, color = Green, fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp)) }
                                 ActionRow(Icons.Filled.List, "Importar respaldo", "Seleccionar un archivo existente", {
                                     syncImportLauncher.launch(arrayOf("application/json", "text/json", "text/*"))
                                 })
@@ -1554,39 +1583,6 @@ private fun CapturedEvent.categoryLabel() = when (category) {
     "suscripciones" -> "SERVICIOS"
     "salud" -> "CASA"
     else -> "OTROS"
-}
-
-private fun importStatementCsv(activity: MainActivity, csv: String): Int {
-    val rows = parseCsvRows(csv)
-    if (rows.size < 2) return 0
-    val header = rows.first().map { it.trim().lowercase(Locale.ROOT) }
-    fun indexOf(names: List<String>) = header.indexOfFirst { value -> names.any { name -> value.contains(name) } }
-    val dateIndex = indexOf(listOf("fecha"))
-    val merchantIndex = indexOf(listOf("comercio", "descrip", "detalle", "glosa", "concepto", "merchant"))
-    val amountIndex = indexOf(listOf("monto", "amount", "cargo", "debe", "debit"))
-    if (dateIndex < 0 || merchantIndex < 0 || amountIndex < 0) return 0
-    val store = CapturedEventStore(activity)
-    return rows.drop(1).count { row ->
-        if (row.size <= maxOf(dateIndex, merchantIndex, amountIndex)) return@count false
-        val amount = row[amountIndex].replace(Regex("[^0-9-]"), "").toIntOrNull() ?: return@count false
-        if (amount <= 0) return@count false
-        val merchant = row[merchantIndex].trim()
-        if (merchant.isBlank()) return@count false
-        val receivedAt = parseStatementDate(row[dateIndex]) ?: System.currentTimeMillis()
-        store.insertStatementEvent(
-            receivedAt = receivedAt,
-            rawText = row.joinToString(" | "),
-            amount = amount,
-            merchant = merchant
-        )
-    }
-}
-
-private fun parseStatementDate(value: String): Long? {
-    val patterns = listOf("dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss")
-    return patterns.firstNotNullOfOrNull { pattern ->
-        runCatching { SimpleDateFormat(pattern, Locale("es", "CL")).parse(value.trim())?.time }.getOrNull()
-    }
 }
 
 private fun importCapturedCsv(activity: MainActivity, csv: String): Int {
