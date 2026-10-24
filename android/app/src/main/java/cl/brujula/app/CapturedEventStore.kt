@@ -228,7 +228,10 @@ class CapturedEventStore(context: Context) {
         receivedAt: Long,
         rawText: String,
         amount: Int,
-        merchant: String
+        merchant: String,
+        movementType: String = "expense",
+        category: String = classifyCategory(merchant),
+        paymentSource: String = "cartola"
     ): Boolean {
         val db = helper.writableDatabase
         val fingerprint = sha256("statement|$receivedAt|$rawText|$amount|$merchant")
@@ -239,10 +242,10 @@ class CapturedEventStore(context: Context) {
             put("raw_text", rawText)
             put("amount", amount)
             put("merchant", merchant.trim())
-            put("movement_type", "expense")
-            put("category", classifyCategory(merchant))
+            put("movement_type", movementType)
+            put("category", category)
             put("category_manual", 0)
-            put("payment_source", "cartola")
+            put("payment_source", paymentSource)
             put("status", "requires_review")
         }
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
