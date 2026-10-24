@@ -19,8 +19,11 @@ data class CapturedEvent(
     val category: String,
     val paymentSource: String,
     val status: String,
-    val categoryManual: Boolean = false
+    val categoryManual: Boolean = false,
+    val manuallyEdited: Boolean = false
 )
+
+data class MovementChange(val id: Long, val eventId: Long, val changedAt: Long, val field: String, val oldValue: String?, val newValue: String?)
 
 internal data class ReconciliationRecord(
     val id: Long,
@@ -168,24 +171,32 @@ class CapturedEventStore(context: Context) {
         category: String,
         paymentSource: String,
         status: String,
-        categoryManual: Boolean = false
+        categoryManual: Boolean = false,
+        manuallyEdited: Boolean = false
     ): Boolean {
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
-            db.query("events", arrayOf("id", "status", "category_manual", "amount", "merchant"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor ->
+            db.query("events", arrayOf("id", "status", "category_manual", "manually_edited", "amount", "merchant"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor ->
                 if (cursor.moveToFirst()) {
                     val localId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
                     val localStatus = cursor.getString(cursor.getColumnIndexOrThrow("status"))
                     val localManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0
+                    val localEdited = cursor.getInt(cursor.getColumnIndexOrThrow("manually_edited")) != 0
                     val merged = ContentValues().apply {
-                        if (statusRank(status) > statusRank(localStatus)) put("status", status)
-                        if (categoryManual && !localManual) {
+                        if (status == "ignored" || (localStatus != "ignored" && statusRank(status) > statusRank(localStatus))) put("status", status)
+                        if (!localEdited && categoryManual && !localManual) {
                             put("category", category)
                             put("category_manual", 1)
                         }
-                        if (cursor.isNull(cursor.getColumnIndexOrThrow("amount")) && amount != null) put("amount", amount)
-                        if (cursor.isNull(cursor.getColumnIndexOrThrow("merchant")) && !merchant.isNullOrBlank()) put("merchant", merchant)
+                        if (!localEdited && cursor.isNull(cursor.getColumnIndexOrThrow("amount")) && amount != null) put("amount", amount)
+                        if (!localEdited && cursor.isNull(cursor.getColumnIndexOrThrow("merchant")) && !merchant.isNullOrBlank()) put("merchant", merchant)
+                        if (!localEdited && manuallyEdited) {
+                            put("merchant", merchant); put("amount", amount); put("received_at", receivedAt)
+                            put("movement_type", movementType); put("category", category); put("category_manual", if (categoryManual) 1 else 0)
+                            put("payment_source", paymentSource); put("manually_edited", 1)
+                        }
+                        if (status == "ignored") put("manually_edited", 1)
                     }
                     if (merged.size() > 0) db.update("events", merged, "id = ?", arrayOf(localId.toString()))
                     db.setTransactionSuccessful()
@@ -202,6 +213,7 @@ class CapturedEventStore(context: Context) {
                 put("movement_type", movementType)
                 put("category", category)
                 put("category_manual", if (categoryManual) 1 else 0)
+                put("manually_edited", if (manuallyEdited) 1 else 0)
                 put("payment_source", paymentSource)
                 put("status", status)
             }
@@ -287,18 +299,52 @@ class CapturedEventStore(context: Context) {
         return helper.writableDatabase.update("events", values, "id = ?", arrayOf(id.toString()))
     }
 
+    fun updateMovement(event: CapturedEvent, merchant: String, amount: Int, receivedAt: Long, category: String, paymentSource: String): Int {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            val changes = linkedMapOf("merchant" to (event.merchant.orEmpty() to merchant.trim()), "amount" to (event.amount?.toString() to amount.toString()),
+                "received_at" to (event.receivedAt.toString() to receivedAt.toString()), "category" to (event.category to category), "payment_source" to (event.paymentSource to paymentSource))
+            val now = System.currentTimeMillis()
+            changes.filterValues { it.first != it.second }.forEach { (field, pair) ->
+                db.insert("movement_changes", null, ContentValues().apply { put("event_id", event.id); put("changed_at", now); put("field", field); put("old_value", pair.first); put("new_value", pair.second) })
+            }
+            val count = db.update("events", ContentValues().apply { put("merchant", merchant.trim()); put("amount", amount); put("received_at", receivedAt); put("category", category); put("category_manual", 1); put("payment_source", paymentSource); put("manually_edited", 1) }, "id = ?", arrayOf(event.id.toString()))
+            db.setTransactionSuccessful()
+            return count
+        } finally { db.endTransaction() }
+    }
+
+    fun history(eventId: Long): List<MovementChange> {
+        val result = mutableListOf<MovementChange>()
+        helper.readableDatabase.query("movement_changes", null, "event_id = ?", arrayOf(eventId.toString()), null, null, "changed_at DESC, id DESC").use { cursor ->
+            while (cursor.moveToNext()) result += MovementChange(cursor.getLong(cursor.getColumnIndexOrThrow("id")), eventId, cursor.getLong(cursor.getColumnIndexOrThrow("changed_at")), cursor.getString(cursor.getColumnIndexOrThrow("field")), cursor.getStringOrNull("old_value"), cursor.getStringOrNull("new_value"))
+        }
+        return result
+    }
+
+    fun importHistory(fingerprint: String, changes: List<MovementChange>) {
+        val db = helper.writableDatabase
+        val eventId = db.query("events", arrayOf("id"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else return }
+        changes.forEach { change ->
+            val args = arrayOf(eventId.toString(), change.changedAt.toString(), change.field, change.oldValue, change.newValue)
+            val exists = db.query("movement_changes", arrayOf("id"), "event_id = ? AND changed_at = ? AND field = ? AND old_value IS ? AND new_value IS ?", args, null, null, null).use { it.moveToFirst() }
+            if (!exists) db.insert("movement_changes", null, ContentValues().apply { put("event_id", eventId); put("changed_at", change.changedAt); put("field", change.field); put("old_value", change.oldValue); put("new_value", change.newValue) })
+        }
+    }
+
     fun deleteDemoEvents(): Int =
         helper.writableDatabase.delete("events", "status = ?", arrayOf("demo"))
 
     fun updateStatus(id: Long, status: String): Int {
-        val values = ContentValues().apply { put("status", status) }
+        val values = ContentValues().apply { put("status", status); if (status == "ignored") put("manually_edited", 1) }
         return helper.writableDatabase.update("events", values, "id = ?", arrayOf(id.toString()))
     }
 
-    fun recent(limit: Int = 30): List<CapturedEvent> {
+    fun recent(limit: Int = 30, includeIgnored: Boolean = false): List<CapturedEvent> {
         val db = helper.readableDatabase
         val result = mutableListOf<CapturedEvent>()
-        db.query("events", null, "status != ?", arrayOf("ignored"), null, null, "received_at DESC", limit.toString()).use { cursor ->
+        db.query("events", null, if (includeIgnored) null else "status != ?", if (includeIgnored) null else arrayOf("ignored"), null, null, "received_at DESC", limit.toString()).use { cursor ->
             while (cursor.moveToNext()) {
                 result += CapturedEvent(
                     id = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
@@ -312,14 +358,15 @@ class CapturedEventStore(context: Context) {
                     category = cursor.getStringOrNull("category") ?: "otros",
                     paymentSource = cursor.getStringOrNull("payment_source") ?: "notificacion",
                     status = cursor.getString(cursor.getColumnIndexOrThrow("status")),
-                    categoryManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0
+                    categoryManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0,
+                    manuallyEdited = cursor.getInt(cursor.getColumnIndexOrThrow("manually_edited")) != 0
                 )
             }
         }
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 6) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 7) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -338,6 +385,8 @@ class CapturedEventStore(context: Context) {
                 )""".trimIndent()
             )
             db.execSQL("CREATE INDEX events_received_at ON events(received_at DESC)")
+            db.execSQL("ALTER TABLE events ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
+            createHistoryTable(db)
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -389,6 +438,15 @@ class CapturedEventStore(context: Context) {
                     }
                 }
             }
+            if (oldVersion < 7) {
+                db.execSQL("ALTER TABLE events ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
+                createHistoryTable(db)
+            }
+        }
+
+        private fun createHistoryTable(db: SQLiteDatabase) {
+            db.execSQL("CREATE TABLE movement_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, changed_at INTEGER NOT NULL, field TEXT NOT NULL, old_value TEXT, new_value TEXT, FOREIGN KEY(event_id) REFERENCES events(id))")
+            db.execSQL("CREATE INDEX movement_changes_event ON movement_changes(event_id, changed_at DESC)")
         }
     }
 }

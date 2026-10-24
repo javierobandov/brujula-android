@@ -69,7 +69,7 @@ class FirebaseCloudSync(context: Context) {
                 val recovered = snapshot.documents.count { document ->
                     val fingerprint = document.getString("fingerprint").orEmpty()
                     if (fingerprint.isBlank() || document.id != fingerprint) return@count false
-                    store.insertSyncEvent(
+                    val inserted = store.insertSyncEvent(
                         fingerprint = fingerprint,
                         receivedAt = document.getLong("received_at") ?: return@count false,
                         sourcePackage = document.getString("source_package") ?: "firebase",
@@ -80,15 +80,23 @@ class FirebaseCloudSync(context: Context) {
                         category = document.getString("category") ?: "otros",
                         paymentSource = document.getString("payment_source") ?: "notificacion",
                         status = document.getString("status") ?: "captured",
-                        categoryManual = document.getBoolean("category_manual") ?: false
+                        categoryManual = document.getBoolean("category_manual") ?: false,
+                        manuallyEdited = document.getBoolean("manually_edited") ?: false
                     )
+                    val history = (document.get("change_history") as? List<*>)?.mapNotNull { value ->
+                        val item = value as? Map<*, *> ?: return@mapNotNull null
+                        MovementChange(0, 0, (item["changed_at"] as? Number)?.toLong() ?: return@mapNotNull null,
+                            item["field"] as? String ?: return@mapNotNull null, item["old_value"] as? String, item["new_value"] as? String)
+                    }.orEmpty()
+                    store.importHistory(fingerprint, history)
+                    inserted
                 }
                 planningDocument.get(Source.SERVER)
                     .addOnSuccessListener { planningSnapshot ->
                         val planningRecovered = if (planningSnapshot.exists()) planning.importCloudData(planningSnapshot.data.orEmpty()) else 0
                         // The screen supplies a bounded recent list; use the database as the
                         // authoritative source so older local events are not silently omitted.
-                        val mergedEvents = store.recent(Int.MAX_VALUE).filter { it.status != "demo" && it.status != "ignored" }
+                        val mergedEvents = store.recent(Int.MAX_VALUE, includeIgnored = true).filter { it.status != "demo" }
                         val chunks = mergedEvents.chunked(450)
 
                         fun commitChunk(index: Int) {
@@ -115,6 +123,11 @@ class FirebaseCloudSync(context: Context) {
                                     "movement_type" to event.movementType,
                                     "category" to event.category,
                                     "category_manual" to event.categoryManual,
+                                    "manually_edited" to event.manuallyEdited,
+                                    "change_history" to store.history(event.id).map { change -> mapOf(
+                                        "changed_at" to change.changedAt, "field" to change.field,
+                                        "old_value" to change.oldValue, "new_value" to change.newValue
+                                    ) },
                                     "payment_source" to event.paymentSource,
                                     "status" to event.status,
                                     "updated_at" to FieldValue.serverTimestamp()
