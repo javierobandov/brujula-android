@@ -11,7 +11,8 @@ internal data class ScotiaStatementMovement(
     val movementType: String,
     val category: String,
     val paymentSource: String,
-    val occurrence: Int
+    val occurrence: Int,
+    val installment: String?
 )
 
 /** Parses the text layer of Scotiabank Chile's credit-card statement detail table. */
@@ -68,6 +69,9 @@ internal object ScotiaStatementPdfParser {
                 // In Scotiabank's detail table, amount 2 is Cargo del Mes; amount 1 is total purchase.
                 val amount = kotlin.math.abs(if (amounts.size >= 2) amounts[1] else amounts[0])
                 if (amount <= 0) continue
+                val installment = Regex("(?<![0-9])([0-9]{1,2})\\s*/\\s*([0-9]{1,2})(?![0-9])")
+                    .findAll(line).firstOrNull { it.range.first > firstMoney }
+                    ?.let { "${it.groupValues[1]}/${it.groupValues[2]}" }
                 val type = movementType(normalizedDescription)
                 val movement = ScotiaStatementMovement(
                     receivedAt = dateForRow,
@@ -76,7 +80,8 @@ internal object ScotiaStatementPdfParser {
                     movementType = type,
                     category = if (type == "expense") classifyStatementCategory(description) else "otros",
                     paymentSource = if (type == "card_payment") "cuenta_corriente" else "tarjeta_credito",
-                    occurrence = 0
+                    occurrence = 0,
+                    installment = installment
                 )
                 val key = listOf(movement.receivedAt, movement.merchant.lowercase(Locale.ROOT), movement.amount, movement.movementType).joinToString("|")
                 val occurrence = (occurrences[key] ?: 0) + 1

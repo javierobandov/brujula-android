@@ -23,6 +23,7 @@ class ScotiaStatementPdfParserTest {
         assertEquals(1, movements.size)
         assertEquals("COMERCIO EJEMPLO", movements.single().merchant)
         assertEquals(10_000, movements.single().amount)
+        assertEquals("02/12", movements.single().installment)
         assertEquals("expense", movements.single().movementType)
         val date = Calendar.getInstance().apply { timeInMillis = movements.single().receivedAt }
         assertEquals(2026, date.get(Calendar.YEAR))

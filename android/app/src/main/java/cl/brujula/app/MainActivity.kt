@@ -116,7 +116,8 @@ class MainActivity : ComponentActivity() {
             rows.count { row ->
                 store.insertStatementEvent(
                     receivedAt = row.receivedAt,
-                    rawText = "Scotiabank PDF | ${row.movementType} | ${row.merchant} | ${row.amount} | fila ${row.occurrence}",
+                    rawText = "Scotiabank PDF | ${row.movementType} | ${row.merchant} | ${row.amount}" +
+                        (row.installment?.let { " | cuota $it" } ?: "") + " | fila ${row.occurrence}",
                     amount = row.amount,
                     merchant = row.merchant,
                     movementType = row.movementType,
