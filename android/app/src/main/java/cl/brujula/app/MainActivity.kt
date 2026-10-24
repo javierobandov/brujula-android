@@ -133,7 +133,7 @@ class MainActivity : ComponentActivity() {
         captured = store.recent(10_000)
         statementStatus = if (imported == 0) "No se encontraron movimientos nuevos en la cartola PDF." else "Cartola PDF: $imported movimientos nuevos; $reconciled conciliados automáticamente. Los demás requieren revisión."
     }
-        val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val csv = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importCapturedCsv(activity, csv)

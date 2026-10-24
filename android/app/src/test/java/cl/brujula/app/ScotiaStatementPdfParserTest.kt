@@ -58,6 +58,6 @@ class ScotiaStatementPdfParserTest {
         val rows = ScotiaStatementPdfParser.parse(text, 2026)
         assertEquals(2, rows.size)
         assertEquals(listOf(1, 2), rows.map { it.occurrence })
-        assertTrue(rows.single().receivedAt > 0)
+        assertTrue(rows.first().receivedAt > 0)
     }
 }
