@@ -14,15 +14,8 @@ class NotificationCaptureService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val rawText = notificationText(sbn.notification)
-        if (rawText.isBlank() || !looksFinancial(rawText, sbn.packageName)) return
+        if (!isScotiaPurchaseNotification(rawText, sbn.packageName)) return
         store.insertIfNew(sbn.packageName, rawText, sbn.postTime)
-    }
-
-    private fun looksFinancial(text: String, packageName: String): Boolean {
-        val haystack = "$packageName $text".lowercase()
-        val bankSignal = listOf("scotia", "scotiabank", "app scotia")
-        val moneySignal = Regex("\\$?\\s*[0-9]{1,3}(?:[.][0-9]{3})+|\\$?\\s*[0-9]{4,}")
-        return bankSignal.any(haystack::contains) && moneySignal.containsMatchIn(text)
     }
 
     private fun notificationText(notification: Notification): String {
@@ -34,4 +27,25 @@ class NotificationCaptureService : NotificationListenerService() {
         extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.forEach { line -> parts.add(line.toString()) }
         return parts.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" · ")
     }
+}
+
+/**
+ * Only capture actual purchase alerts, not every Scotia notification containing digits.
+ * Bank account balances, card payments, codes and news must never become expenses.
+ */
+internal fun isScotiaPurchaseNotification(text: String, packageName: String): Boolean {
+    val sourceIsScotia = packageName.contains("scotia", ignoreCase = true) ||
+        text.contains("App Scotia", ignoreCase = true) ||
+        text.contains("Scotiabank", ignoreCase = true)
+    if (!sourceIsScotia) return false
+
+    val purchase = Regex(
+        """se\s+realiz[oó]\s+(?:una\s+)?compra\s+con\s+tu\s+tarjeta\s+de\s+(?:cr[eé]dito|d[eé]bito)""",
+        RegexOption.IGNORE_CASE
+    )
+    val amountAndMerchant = Regex(
+        """\bpor\s*\$\s*([0-9]{1,3}(?:\.[0-9]{3})+|[0-9]{4,})\s+en\s+([^·\s][^·]*?)(?:\s+Si\s+desconoces|\s*·|$)""",
+        RegexOption.IGNORE_CASE
+    )
+    return purchase.containsMatchIn(text) && amountAndMerchant.containsMatchIn(text)
 }
