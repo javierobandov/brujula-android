@@ -14,8 +14,10 @@ El paquete contiene:
 - `fingerprint`: identidad estable para deduplicación entre dispositivos.
 - `received_at`, `source_package`, `raw_text`, `amount`, `merchant`.
 - `movement_type`, `category`, `payment_source` y `status`.
+- `manually_edited` y `change_history` registran correcciones explícitas y sus valores previos.
 
 La importación es idempotente: un fingerprint existente no crea un duplicado.
+Los registros `ignored` se conservan en respaldos y Firebase como estado explícito; no se borran del historial financiero.
 
 ## Reglas de seguridad
 
@@ -28,9 +30,9 @@ La importación es idempotente: un fingerprint existente no crea un duplicado.
 
 ## Evolución cloud
 
-En el checkout local de trabajo existe un adaptador Firebase opcional con Authentication y Firestore. La sincronización lee desde servidor los eventos y la planificación antes de subir el conjunto combinado; si una lectura falla, no inicia las escrituras. Los eventos usan fingerprint como ID y se procesan en lotes de hasta 450. Estados y categorías manuales tienen precedencia al combinarse; los límites de categorías y elementos de planificación remotos ausentes se agregan localmente.
+Firebase Authentication y Firestore sincronizan movimientos y planificación. La sincronización lee desde servidor los eventos y la planificación antes de subir el conjunto combinado; si una lectura falla, no inicia las escrituras. Los eventos usan fingerprint como ID y se procesan en lotes de hasta 450. Ediciones manuales, historial de cambios, estados ignorados y conciliación se conservan durante la mezcla. La evidencia original de notificación no se sube: Firestore guarda un texto genérico y los campos contables editados.
 
-Esta implementación local aún no está publicada. `FirebaseCloudSyncEmulatorTest` ejecuta `FirebaseCloudSync` con Robolectric contra Firebase Auth y Firestore Emulator; cubre recuperación de un evento, conservación de estado/categoría manual, escritura repetida, lectura de la planificación y resultado del callback. Esto valida el código Kotlin del cliente, pero no la interfaz en un dispositivo físico o AVD. La planificación conserva el valor local para elementos existentes con el mismo ID; faltan versiones por campo y tombstones, por lo que cambios concurrentes y eliminaciones multi-dispositivo no están resueltos de forma segura.
+`MovementEditStoreTest` verifica las ediciones, el historial local, preservación de conciliaciones y estados ignorados ante una copia remota obsoleta. `FirebaseCloudSyncEmulatorTest` ejecuta el cliente Kotlin con datos sintéticos en Auth/Firestore Emulator. Estos controles no sustituyen una revisión visual en dispositivo físico o AVD. Si dos dispositivos editan manualmente el mismo movimiento al mismo tiempo, la app conserva la edición local de cada uno; no existe resolución por campo ni historial de conflictos.
 
 ### Validación reproducible de reglas
 

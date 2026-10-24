@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
     var showCloudAccountDialog by remember { mutableStateOf(false) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent(10_000)) }
     var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
+    var ignoringEvent by remember { mutableStateOf<CapturedEvent?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
@@ -123,7 +126,8 @@ class MainActivity : ComponentActivity() {
     val syncExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         activity.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-            writer.write(syncBundleJson(CapturedEventStore(activity).recent(10_000), PlanningStore(activity).exportJson()))
+            val store = CapturedEventStore(activity)
+            writer.write(syncBundleJson(store.recent(10_000, includeIgnored = true), PlanningStore(activity).exportJson(), store))
         }
         syncStatus = "Paquete de sincronización exportado."
     }
@@ -366,13 +370,14 @@ class MainActivity : ComponentActivity() {
                                 CapturedExpenseRow(
                                     event = event,
                                     onEditCategory = { editingEvent = event },
+                                    onIgnore = { ignoringEvent = event },
                                     onConfirm = {
                                         CapturedEventStore(activity).updateStatus(event.id, "confirmed")
                                         captured = CapturedEventStore(activity).recent(10_000)
                                     }
                                 )
                             } else {
-                                CapturedEventRow(event)
+                                CapturedEventRow(event, onEdit = { editingEvent = event }, onIgnore = { ignoringEvent = event })
                             }
                         }
                     }
@@ -605,6 +610,7 @@ class MainActivity : ComponentActivity() {
                             CapturedExpenseRow(
                                 event = event,
                                 onEditCategory = { editingEvent = event },
+                                onIgnore = { ignoringEvent = event },
                                 onConfirm = {
                                     CapturedEventStore(activity).updateStatus(event.id, "confirmed")
                                     captured = CapturedEventStore(activity).recent(10_000)
@@ -882,24 +888,51 @@ class MainActivity : ComponentActivity() {
             )
         }
         editingEvent?.let { event ->
+            val history = remember(event.id) { CapturedEventStore(activity).history(event.id) }
+            var merchant by remember(event.id) { mutableStateOf(event.merchant.orEmpty()) }
+            var amount by remember(event.id) { mutableStateOf(event.amount?.toString().orEmpty()) }
+            var date by remember(event.id) { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) }
+            var category by remember(event.id) { mutableStateOf(event.category) }
+            var payment by remember(event.id) { mutableStateOf(event.paymentSource) }
+            var error by remember(event.id) { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { editingEvent = null },
-                title = { Text("Categoría del movimiento") },
+                title = { Text("Editar movimiento") },
                 text = {
-                    Column {
-                                listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { category ->
-                            TextButton(onClick = {
-                                CapturedEventStore(activity).updateCategory(event.id, category)
-                                captured = CapturedEventStore(activity).recent(10_000)
-                                editingEvent = null
-                            }, modifier = Modifier.fillMaxWidth()) {
-                                Text(category.replaceFirstChar { it.uppercase() })
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        OutlinedTextField(merchant, { merchant = it }, label = { Text("Comercio") }, singleLine = true)
+                        OutlinedTextField(amount, { amount = it }, label = { Text("Monto en pesos") }, singleLine = true)
+                        OutlinedTextField(date, { date = it }, label = { Text("Fecha (AAAA-MM-DD)") }, singleLine = true)
+                        Text("Categoría", fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { value ->
+                                FilterChip(category == value, { category = value }, label = { Text(categoryLabel(value), fontSize = 10.sp) })
                             }
                         }
+                        Text("Medio de pago", fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            listOf("cuenta_corriente" to "Cuenta", "tarjeta_credito" to "Tarjeta", "manual" to "Manual", "notificacion" to "Otro").forEach { (value, label) ->
+                                FilterChip(payment == value, { payment = value }, label = { Text(label) })
+                            }
+                        }
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                        history.take(4).forEach { change -> Text("${change.field}: ${change.oldValue ?: "—"} → ${change.newValue ?: "—"}", color = Muted, fontSize = 10.sp) }
                     }
                 },
-                confirmButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
+                confirmButton = { TextButton(onClick = {
+                    val parsedAmount = parseClpInput(amount)
+                    val parsedDate = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(date)?.time }.getOrNull()
+                    if (merchant.isBlank() || parsedAmount == null || parsedAmount <= 0 || parsedDate == null) error = "Revisa comercio, monto y fecha."
+                    else { CapturedEventStore(activity).updateMovement(event, merchant, parsedAmount, parsedDate, category, payment); captured = CapturedEventStore(activity).recent(10_000); editingEvent = null }
+                }) { Text("Guardar") } },
+                dismissButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
             )
+        }
+        ignoringEvent?.let { event ->
+            AlertDialog(onDismissRequest = { ignoringEvent = null }, title = { Text("Ignorar movimiento") },
+                text = { Text("Se ocultará de los gastos y conciliaciones. El registro quedará conservado en el respaldo y la sincronización.") },
+                confirmButton = { TextButton(onClick = { CapturedEventStore(activity).updateStatus(event.id, "ignored"); captured = CapturedEventStore(activity).recent(10_000); ignoringEvent = null }) { Text("Ignorar") } },
+                dismissButton = { TextButton(onClick = { ignoringEvent = null }) { Text("Cancelar") } })
         }
     }
 }
@@ -1281,7 +1314,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}) {
+@Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}, onEdit: (() -> Unit)? = null, onIgnore: (() -> Unit)? = null) {
     Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1301,18 +1334,23 @@ class MainActivity : ComponentActivity() {
             } else {
                 Text(event.statusLabel(), color = Green, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
+            if (onEdit != null && onIgnore != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onEdit) { Text("Editar movimiento") }
+                TextButton(onClick = onIgnore) { Text("Ignorar") }
+            }
         }
     }
 }
 
-@Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onConfirm: () -> Unit) {
+@Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onIgnore: () -> Unit, onConfirm: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
                 if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
-                TextButton(onClick = onEditCategory) { Text("Cambiar categoría") }
+                TextButton(onClick = onEditCategory) { Text("Editar") }
+                TextButton(onClick = onIgnore) { Text("Ignorar") }
             }
         }
     }
@@ -1404,7 +1442,7 @@ private fun Long.isMonth(year: Int, month: Int): Boolean {
 }
 
 
-private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null): String = JSONObject().apply {
+private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = null, store: CapturedEventStore? = null): String = JSONObject().apply {
     put("schema_version", 1)
     put("generated_at", System.currentTimeMillis())
     put("events", JSONArray().apply {
@@ -1419,8 +1457,15 @@ private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = 
                 put("movement_type", event.movementType)
                 put("category", event.category)
                 put("category_manual", event.categoryManual)
+                put("manually_edited", event.manuallyEdited)
                 put("payment_source", event.paymentSource)
                 put("status", event.status)
+                put("change_history", JSONArray().apply {
+                    store?.history(event.id).orEmpty().forEach { change -> put(JSONObject().apply {
+                        put("changed_at", change.changedAt); put("field", change.field)
+                        put("old_value", change.oldValue ?: JSONObject.NULL); put("new_value", change.newValue ?: JSONObject.NULL)
+                    }) }
+                })
             })
         }
     })
@@ -1436,8 +1481,8 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
         val event = events.optJSONObject(index) ?: return@count false
         val fingerprint = event.optString("fingerprint").takeIf { it.isNotBlank() } ?: return@count false
         val status = event.optString("status", "captured")
-        if (status == "demo" || status == "ignored") return@count false
-        store.insertSyncEvent(
+        if (status == "demo") return@count false
+        val inserted = store.insertSyncEvent(
             fingerprint = fingerprint,
             receivedAt = event.optLong("received_at", System.currentTimeMillis()),
             sourcePackage = event.optString("source_package", "cl.brujula.app.sync"),
@@ -1448,8 +1493,17 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
             category = event.optString("category", "otros"),
             paymentSource = event.optString("payment_source", "notificacion"),
             status = status,
-            categoryManual = event.optBoolean("category_manual", false)
+            categoryManual = event.optBoolean("category_manual", false),
+            manuallyEdited = event.optBoolean("manually_edited", false)
         )
+        val history = event.optJSONArray("change_history")
+        if (history != null) store.importHistory(fingerprint, (0 until history.length()).mapNotNull { changeIndex ->
+            val change = history.optJSONObject(changeIndex) ?: return@mapNotNull null
+            MovementChange(0, 0, change.optLong("changed_at"), change.optString("field"),
+                if (change.isNull("old_value")) null else change.optString("old_value"),
+                if (change.isNull("new_value")) null else change.optString("new_value"))
+        })
+        inserted
     }
     PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
     return importedEvents
