@@ -62,22 +62,23 @@ internal object ScotiaStatementPdfParser {
             if (moneyPattern.containsMatchIn(line)) {
                 val dateForRow = currentDate
                 val amounts = moneyPattern.findAll(line).mapNotNull { it.groupValues[1].replace(".", "").toIntOrNull() }.toList()
+                val installment = Regex("(?<![0-9])([0-9]{1,2})\\s*/\\s*([0-9]{1,2})(?![0-9])")
+                    .findAll(line).firstOrNull { it.range.first > firstMoney }
+                    ?.let { "${it.groupValues[1]}/${it.groupValues[2]}" }
                 val description = cleanDescription(buildString {
                     append(pending).append(' ')
                     append(line.substringBefore('$'))
                 })
                 pending = StringBuilder()
-                if (dateForRow == null || amounts.isEmpty() || description.length < 2) continue
+                // Every movement in this statement's detail table has total, monthly charge and
+                // an installment marker. This excludes payment slips, totals and side columns.
+                if (dateForRow == null || amounts.size < 2 || installment == null || description.length < 2) continue
                 val normalizedDescription = description.lowercase(Locale.ROOT)
-                if (normalizedDescription == "pagos a la cuenta" && amounts.size < 2) continue
                 if (summaryRows.any { normalizedDescription == it || normalizedDescription.startsWith("$it ") }) continue
 
                 // In Scotiabank's detail table, amount 2 is Cargo del Mes; amount 1 is total purchase.
                 val amount = kotlin.math.abs(if (amounts.size >= 2) amounts[1] else amounts[0])
                 if (amount <= 0) continue
-                val installment = Regex("(?<![0-9])([0-9]{1,2})\\s*/\\s*([0-9]{1,2})(?![0-9])")
-                    .findAll(line).firstOrNull { it.range.first > firstMoney }
-                    ?.let { "${it.groupValues[1]}/${it.groupValues[2]}" }
                 val type = movementType(normalizedDescription)
                 val movement = ScotiaStatementMovement(
                     receivedAt = dateForRow,

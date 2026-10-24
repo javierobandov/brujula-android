@@ -17,8 +17,8 @@ android { namespace = "cl.brujula.app"; compileSdk = 35
         applicationId = "cl.brujula.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("versionCode").getOrElse("29").toInt()
-        versionName = providers.gradleProperty("versionName").getOrElse("0.29.0")
+        versionCode = providers.gradleProperty("versionCode").getOrElse("30").toInt()
+        versionName = providers.gradleProperty("versionName").getOrElse("0.30.0")
     }
     buildFeatures { buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
