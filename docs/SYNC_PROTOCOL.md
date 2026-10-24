@@ -28,13 +28,38 @@ La importación es idempotente: un fingerprint existente no crea un duplicado.
 
 ## Evolución cloud
 
-1. Validar exportación/importación JSON entre instalaciones.
-2. Elegir un proveedor gratuito privado con base de datos y funciones serverless.
-3. Añadir autenticación y un identificador de usuario.
-4. Implementar subida de eventos nuevos por fingerprint.
-5. Implementar descarga incremental por fecha o cursor.
-6. Resolver conflictos conservando la versión más confiable: cartola > revisión humana > notificación.
-7. Probar restauración completa en otro teléfono.
+En el checkout local de trabajo existe un adaptador Firebase opcional con Authentication y Firestore. La sincronización lee desde servidor los eventos y la planificación antes de subir el conjunto combinado; si una lectura falla, no inicia las escrituras. Los eventos usan fingerprint como ID y se procesan en lotes de hasta 450. Estados y categorías manuales tienen precedencia al combinarse; los límites de categorías y elementos de planificación remotos ausentes se agregan localmente.
+
+Esta implementación local aún no está publicada. `FirebaseCloudSyncEmulatorTest` ejecuta `FirebaseCloudSync` con Robolectric contra Firebase Auth y Firestore Emulator; cubre recuperación de un evento, conservación de estado/categoría manual, escritura repetida, lectura de la planificación y resultado del callback. Esto valida el código Kotlin del cliente, pero no la interfaz en un dispositivo físico o AVD. La planificación conserva el valor local para elementos existentes con el mismo ID; faltan versiones por campo y tombstones, por lo que cambios concurrentes y eliminaciones multi-dispositivo no están resueltos de forma segura.
+
+### Validación reproducible de reglas
+
+El repositorio incluye `firebase.emulator.json` y `tools/firebase_emulator_rules_smoke.mjs` para probar con datos sintéticos el acceso autenticado a eventos y planificación, la actualización repetida por fingerprint y el rechazo de lecturas/escrituras entre usuarios o con ID inconsistente. Requiere Node.js y Firebase CLI; Firebase CLI 15 requiere JDK 21 para los emuladores. Ejecución:
+
+```sh
+firebase emulators:exec --project demo-brujula --only auth,firestore \
+  --config firebase.emulator.json \
+  "node tools/firebase_emulator_rules_smoke.mjs"
+```
+
+La prueba de reglas pasó como `FIREBASE_EMULATOR_RULES_OK`. Para ejecutar además la integración del SDK Android/Kotlin con Firebase Emulator se requiere JDK 21 para Firebase CLI, JDK 17 para Gradle y las variables de configuración sintética no secretas:
+
+```sh
+firebase emulators:exec --project demo-brujula --only auth,firestore \
+  --config firebase.emulator.json \
+  'cd android && BRUJULA_FIREBASE_API_KEY=fake-api-key \
+  BRUJULA_FIREBASE_APP_ID=1:1234567890:android:synthetic \
+  BRUJULA_FIREBASE_PROJECT_ID=demo-brujula \
+  ./gradlew testDebugUnitTest --no-daemon -PrunFirebaseEmulatorTests=true'
+```
+
+En este entorno pasó `FirebaseCloudSyncEmulatorTest` con usuario y datos sintéticos. El AVD no arrancó, así que la app y su interfaz no se probaron en dispositivo.
+
+Pendiente:
+
+1. Cubrir con el cliente Kotlin fallos de red, reintentos e idempotencia más allá del caso exitoso probado.
+2. Definir resolución de conflictos para cambios manuales concurrentes y ediciones/eliminaciones de planificación con IDs existentes.
+3. Probar restauración completa en otro teléfono.
 
 Hasta completar esos pasos, la fuente operativa sigue siendo SQLite local y la cartola oficial sigue siendo la evidencia de conciliación.
 

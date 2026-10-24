@@ -142,8 +142,17 @@ class PlanningStore(context: Context) {
         }
         if (root.has("monthly_goal") && monthlyGoal() == 0) setMonthlyGoal(root.optInt("monthly_goal"))
         val limits = root.optJSONArray("category_limits")
-        if (limits != null && categoryLimits().isEmpty()) {
-            writeArray("category_limits", limits)
+        if (limits != null) {
+            val mergedLimits = categoryLimits().associateBy { it.category }.toMutableMap()
+            for (index in 0 until limits.length()) {
+                val item = limits.optJSONObject(index) ?: continue
+                val category = item.optString("category", "otros")
+                val amount = item.optInt("amount", 0)
+                if (category !in mergedLimits && amount > 0) mergedLimits[category] = CategoryLimit(category, amount)
+            }
+            writeArray("category_limits", JSONArray().apply {
+                mergedLimits.values.sortedBy { it.category }.forEach { put(JSONObject().apply { put("category", it.category); put("amount", it.amount) }) }
+            })
         }
         writeArray("incomes", JSONArray().apply { newIncomes.forEach { put(it.toJson()) } })
         writeArray("commitments", JSONArray().apply { newCommitments.forEach { put(it.toJson()) } })
@@ -166,6 +175,11 @@ class PlanningStore(context: Context) {
         val root = JSONObject().apply {
             put("schema_version", 1)
             put("monthly_goal", (data["monthly_goal"] as? Number)?.toInt() ?: 0)
+            put("category_limits", JSONArray().apply {
+                (data["category_limits"] as? List<*>)?.forEach { item ->
+                    (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }
+                }
+            })
             put("incomes", JSONArray().apply {
                 (data["incomes"] as? List<*>)?.forEach { item ->
                     (item as? Map<*, *>)?.let { put(JSONObject(it.mapKeys { entry -> entry.key.toString() })) }

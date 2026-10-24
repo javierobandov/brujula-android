@@ -25,3 +25,40 @@ jobs:
         run: python test_excel_to_brujula.py
       - name: Test simulated financial flow
         run: python -c "from tools.test_simulation import test_end_to_end_simulation; test_end_to_end_simulation()"
+
+  firebase-client-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node.js for Firebase CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test Firebase client recovery against emulators
+        run: >-
+          npx --yes firebase-tools@15.34.1 emulators:exec
+          --config firebase.emulator.json
+          --project demo-brujula
+          --only auth,firestore
+          'cd android && BRUJULA_FIREBASE_API_KEY=synthetic-api-key
+          BRUJULA_FIREBASE_APP_ID=1:1234567890:android:synthetic
+          BRUJULA_FIREBASE_PROJECT_ID=demo-brujula
+          ./gradlew testDebugUnitTest --no-daemon -PrunFirebaseEmulatorTests=true'

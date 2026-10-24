@@ -18,8 +18,49 @@ data class CapturedEvent(
     val movementType: String,
     val category: String,
     val paymentSource: String,
-    val status: String
+    val status: String,
+    val categoryManual: Boolean = false
 )
+
+internal data class ReconciliationRecord(
+    val id: Long,
+    val receivedAt: Long,
+    val amount: Int,
+    val merchant: String,
+    val movementType: String = "expense"
+)
+
+/** Returns only mutual one-to-one matches, so an ambiguous merchant never gets reconciled automatically. */
+internal fun determineReconciliationPairs(
+    statements: List<ReconciliationRecord>,
+    captured: List<ReconciliationRecord>
+): List<Pair<Long, Long>> {
+    fun compatible(statement: ReconciliationRecord, event: ReconciliationRecord): Boolean {
+        if (statement.amount != event.amount || statement.movementType != event.movementType) return false
+        if (kotlin.math.abs(statement.receivedAt - event.receivedAt) > 7L * 24 * 60 * 60 * 1000) return false
+        val left = normalizeMerchant(statement.merchant)
+        val right = normalizeMerchant(event.merchant)
+        return left.isNotBlank() && right.isNotBlank() &&
+            (left == right || (minOf(left.length, right.length) >= 5 && (left.contains(right) || right.contains(left))))
+    }
+
+    val orderedStatements = statements.sortedWith(compareBy<ReconciliationRecord> { it.receivedAt }.thenBy { it.id })
+    val orderedCaptured = captured.sortedWith(compareBy<ReconciliationRecord> { it.receivedAt }.thenBy { it.id })
+    val statementCandidates = orderedStatements.associate { statement ->
+        statement.id to orderedCaptured.filter { compatible(statement, it) }.map { it.id }
+    }
+    val capturedCandidates = orderedCaptured.associate { event ->
+        event.id to orderedStatements.filter { compatible(it, event) }.map { it.id }
+    }
+    return orderedStatements.mapNotNull { statement ->
+        val candidates = statementCandidates[statement.id].orEmpty()
+        val eventId = candidates.singleOrNull() ?: return@mapNotNull null
+        if (capturedCandidates[eventId].orEmpty().size == 1) statement.id to eventId else null
+    }
+}
+
+private fun normalizeMerchant(value: String): String = value.lowercase(Locale.ROOT)
+    .replace(Regex("[^a-z0-9áéíóúñ]"), "")
 
 class CapturedEventStore(context: Context) {
     private val helper = EventDb(context.applicationContext)
@@ -126,38 +167,50 @@ class CapturedEventStore(context: Context) {
         movementType: String,
         category: String,
         paymentSource: String,
-        status: String
+        status: String,
+        categoryManual: Boolean = false
     ): Boolean {
         val db = helper.writableDatabase
-        db.query("events", arrayOf("id", "status"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor ->
-            if (cursor.moveToFirst()) {
-                val localId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
-                val localStatus = cursor.getString(cursor.getColumnIndexOrThrow("status"))
-                if (statusRank(status) > statusRank(localStatus)) {
-                    db.update("events", ContentValues().apply {
-                        put("status", status)
-                        put("category", category)
-                        put("payment_source", paymentSource)
-                        put("movement_type", movementType)
-                    }, "id = ?", arrayOf(localId.toString()))
+        db.beginTransaction()
+        try {
+            db.query("events", arrayOf("id", "status", "category_manual", "amount", "merchant"), "fingerprint = ?", arrayOf(fingerprint), null, null, null).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val localId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                    val localStatus = cursor.getString(cursor.getColumnIndexOrThrow("status"))
+                    val localManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0
+                    val merged = ContentValues().apply {
+                        if (statusRank(status) > statusRank(localStatus)) put("status", status)
+                        if (categoryManual && !localManual) {
+                            put("category", category)
+                            put("category_manual", 1)
+                        }
+                        if (cursor.isNull(cursor.getColumnIndexOrThrow("amount")) && amount != null) put("amount", amount)
+                        if (cursor.isNull(cursor.getColumnIndexOrThrow("merchant")) && !merchant.isNullOrBlank()) put("merchant", merchant)
+                    }
+                    if (merged.size() > 0) db.update("events", merged, "id = ?", arrayOf(localId.toString()))
+                    db.setTransactionSuccessful()
+                    return false
                 }
-                return false
             }
+            val values = ContentValues().apply {
+                put("fingerprint", fingerprint)
+                put("received_at", receivedAt)
+                put("source_package", sourcePackage)
+                put("raw_text", rawText)
+                put("amount", amount)
+                put("merchant", merchant)
+                put("movement_type", movementType)
+                put("category", category)
+                put("category_manual", if (categoryManual) 1 else 0)
+                put("payment_source", paymentSource)
+                put("status", status)
+            }
+            val inserted = db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+            db.setTransactionSuccessful()
+            return inserted
+        } finally {
+            db.endTransaction()
         }
-        val values = ContentValues().apply {
-            put("fingerprint", fingerprint)
-            put("received_at", receivedAt)
-            put("source_package", sourcePackage)
-            put("raw_text", rawText)
-            put("amount", amount)
-            put("merchant", merchant)
-            put("movement_type", movementType)
-            put("category", category)
-            put("category_manual", 1)
-            put("payment_source", paymentSource)
-            put("status", status)
-        }
-        return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
     fun insertStatementEvent(
         receivedAt: Long,
@@ -185,58 +238,37 @@ class CapturedEventStore(context: Context) {
 
     fun reconcileStatements(): Int {
         val db = helper.writableDatabase
-        val statements = mutableListOf<Triple<Long, Long, String>>()
-        val usedCapturedIds = mutableSetOf<Long>()
-        db.query(
-            "events",
-            arrayOf("id", "received_at", "amount", "merchant"),
-            "source_package = ? AND status = ?",
-            arrayOf("cl.brujula.app.statement", "requires_review"),
-            null, null, "received_at ASC"
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val amountIndex = cursor.getColumnIndexOrThrow("amount")
-                val merchantIndex = cursor.getColumnIndexOrThrow("merchant")
-                if (!cursor.isNull(amountIndex) && !cursor.isNull(merchantIndex)) {
-                    statements += Triple(
-                        cursor.getLong(cursor.getColumnIndexOrThrow("id")),
-                        cursor.getLong(cursor.getColumnIndexOrThrow("received_at")),
-                        cursor.getInt(amountIndex).toString() + "|" + cursor.getString(merchantIndex)
-                    )
-                }
-            }
-        }
-        var reconciled = 0
-        statements.forEach { (statementId, statementDate, key) ->
-            val separator = key.indexOf('|')
-            val amount = key.substring(0, separator).toIntOrNull() ?: return@forEach
-            val merchant = key.substring(separator + 1)
-            var matchedId: Long? = null
-            db.query(
-                "events",
-                arrayOf("id", "received_at", "merchant"),
-                "status IN (?, ?) AND amount = ? AND source_package != ?",
-                arrayOf("captured", "confirmed", amount.toString(), "cl.brujula.app.statement"),
-                null, null, "received_at ASC"
-            ).use { cursor ->
-                while (cursor.moveToNext() && matchedId == null) {
-                    val candidateId = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
-                    if (candidateId in usedCapturedIds) continue
-                    val candidateMerchant = cursor.getStringOrNull("merchant").orEmpty()
-                    val days = kotlin.math.abs(cursor.getLong(cursor.getColumnIndexOrThrow("received_at")) - statementDate) / 86_400_000L
-                    if (days <= 7 && merchantsOverlap(merchant, candidateMerchant)) {
-                        matchedId = candidateId
+        db.beginTransaction()
+        try {
+            fun readRecords(selection: String, args: Array<String>): List<ReconciliationRecord> {
+                val records = mutableListOf<ReconciliationRecord>()
+                db.query("events", arrayOf("id", "received_at", "amount", "merchant", "movement_type"), selection, args, null, null, "received_at ASC, id ASC").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val amountIndex = cursor.getColumnIndexOrThrow("amount")
+                        val merchantIndex = cursor.getColumnIndexOrThrow("merchant")
+                        if (!cursor.isNull(amountIndex) && !cursor.isNull(merchantIndex)) records += ReconciliationRecord(
+                            cursor.getLong(cursor.getColumnIndexOrThrow("id")),
+                            cursor.getLong(cursor.getColumnIndexOrThrow("received_at")),
+                            cursor.getInt(amountIndex),
+                            cursor.getString(merchantIndex),
+                            cursor.getString(cursor.getColumnIndexOrThrow("movement_type"))
+                        )
                     }
                 }
+                return records
             }
-            matchedId?.let { eventId ->
-                usedCapturedIds += eventId
+            val statements = readRecords("source_package = ? AND status = ?", arrayOf("cl.brujula.app.statement", "requires_review"))
+            val captured = readRecords("source_package != ? AND status IN (?, ?)", arrayOf("cl.brujula.app.statement", "captured", "confirmed"))
+            val pairs = determineReconciliationPairs(statements, captured)
+            pairs.forEach { (statementId, eventId) ->
                 db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(eventId.toString()))
                 db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(statementId.toString()))
-                reconciled++
             }
+            db.setTransactionSuccessful()
+            return pairs.size
+        } finally {
+            db.endTransaction()
         }
-        return reconciled
     }
 
     private fun statusRank(status: String): Int = when (status) {
@@ -279,7 +311,8 @@ class CapturedEventStore(context: Context) {
                     movementType = cursor.getStringOrNull("movement_type") ?: "expense",
                     category = cursor.getStringOrNull("category") ?: "otros",
                     paymentSource = cursor.getStringOrNull("payment_source") ?: "notificacion",
-                    status = cursor.getString(cursor.getColumnIndexOrThrow("status"))
+                    status = cursor.getString(cursor.getColumnIndexOrThrow("status")),
+                    categoryManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0
                 )
             }
         }
@@ -422,18 +455,6 @@ private fun classifyPaymentSource(text: String): String {
         normalized.startsWith("manual") -> "manual"
         else -> "notificacion"
     }
-}
-
-private fun merchantsOverlap(left: String, right: String): Boolean {
-    val normalize = { value: String ->
-        value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9áéíóúñ ]"), " ")
-            .replace(Regex("\\s+"), " ").trim()
-    }
-    val a = normalize(left)
-    val b = normalize(right)
-    if (a.isBlank() || b.isBlank()) return false
-    return a.contains(b) || b.contains(a) ||
-        a.split(" ").filter { it.length >= 4 }.any { token -> b.contains(token) }
 }
 
 private fun sha256(value: String) = MessageDigest.getInstance("SHA-256")

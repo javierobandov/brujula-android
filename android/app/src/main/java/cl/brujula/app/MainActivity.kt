@@ -1418,6 +1418,7 @@ private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = 
                 put("merchant", event.merchant ?: JSONObject.NULL)
                 put("movement_type", event.movementType)
                 put("category", event.category)
+                put("category_manual", event.categoryManual)
                 put("payment_source", event.paymentSource)
                 put("status", event.status)
             })
@@ -1446,7 +1447,8 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
             movementType = event.optString("movement_type", "expense"),
             category = event.optString("category", "otros"),
             paymentSource = event.optString("payment_source", "notificacion"),
-            status = status
+            status = status,
+            categoryManual = event.optBoolean("category_manual", false)
         )
     }
     PlanningStore(activity).importJson(root.optJSONObject("planning") ?: JSONObject())
