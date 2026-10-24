@@ -38,12 +38,17 @@ class ScotiaStatementPdfParserTest {
                 03/10/2026 DEVOLUCION COMERCIO $1.500
                 04/10/2026 PAGO TARJETA CREDITO $40.000
                 05/10/2026 AVANCE EFECTIVO EN CUOTAS $15.000 $2.500 01/06 $2.500
+                06/10/2026
+                PAGO EN EFECTIVO
+                $35.000 $35.000 00/00 $35.000
+                PAGOS A LA CUENTA $35.000
+                07/10/2026 COMPRA EJEMPLO $6.000
             """.trimIndent(),
             2026
         )
 
-        assertEquals(listOf("refund", "card_payment", "transfer"), rows.map { it.movementType })
-        assertEquals(listOf(1_500, 40_000, 2_500), rows.map { it.amount })
+        assertEquals(listOf("refund", "card_payment", "transfer", "card_payment", "expense"), rows.map { it.movementType })
+        assertEquals(listOf(1_500, 40_000, 2_500, 35_000, 6_000), rows.map { it.amount })
         assertEquals("cuenta_corriente", rows[1].paymentSource)
         assertEquals("tarjeta_credito", rows[0].paymentSource)
     }

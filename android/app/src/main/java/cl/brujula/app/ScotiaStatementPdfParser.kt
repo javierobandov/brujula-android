@@ -20,10 +20,14 @@ internal object ScotiaStatementPdfParser {
     private val moneyPattern = Regex("\\$\\s*(-?[0-9][0-9.]*)")
     private val datePattern = Regex("(?<![0-9])([0-3]?[0-9])[/.-]([01]?[0-9])(?:[/.-]([0-9]{2,4}))?(?![0-9])|(?<![0-9])([0-3][0-9])([01][0-9])(?![0-9])")
     private val ignored = listOf(
-        "fecha estado de cuenta", "total operaciones", "pago en efectivo", "pagos a la cuenta",
+        "fecha estado de cuenta", "total operaciones",
         "compras en cuotas a la cuenta", "informacion de pago", "información de pago",
-        "monto total facturado", "cupo total", "cargo del mes", "valor cuota", "total credito",
-        "total crédito", "comprobante de pago", "cargos, comisiones, impuestos y abono"
+        "monto total facturado", "cupo total", "cargo del mes", "valor cuota",
+        "comprobante de pago", "cargos, comisiones, impuestos y abono"
+    )
+    private val summaryRows = listOf(
+        "total operaciones", "compras en cuotas a la cuenta",
+        "cargos, comisiones, impuestos y abono", "monto total facturado"
     )
 
     fun parse(text: String, statementYear: Int): List<ScotiaStatementMovement> {
@@ -45,6 +49,7 @@ internal object ScotiaStatementPdfParser {
             val date = datePattern.findAll(line).firstOrNull { it.range.first < firstMoney }
             if (ignored.any(lower::contains) && date == null) { pending = StringBuilder(); continue }
             if (date != null) {
+                pending = StringBuilder()
                 val parts = date.groupValues
                 val day = (parts[1].ifBlank { parts[4] }).toIntOrNull()
                 val month = (parts[2].ifBlank { parts[5] }).toIntOrNull()
@@ -64,7 +69,8 @@ internal object ScotiaStatementPdfParser {
                 pending = StringBuilder()
                 if (dateForRow == null || amounts.isEmpty() || description.length < 2) continue
                 val normalizedDescription = description.lowercase(Locale.ROOT)
-                if (ignored.any(normalizedDescription::contains)) continue
+                if (normalizedDescription == "pagos a la cuenta" && amounts.size < 2) continue
+                if (summaryRows.any { normalizedDescription == it || normalizedDescription.startsWith("$it ") }) continue
 
                 // In Scotiabank's detail table, amount 2 is Cargo del Mes; amount 1 is total purchase.
                 val amount = kotlin.math.abs(if (amounts.size >= 2) amounts[1] else amounts[0])
@@ -113,7 +119,11 @@ internal object ScotiaStatementPdfParser {
         .trim(' ', '|', '-', ':', '.')
         .take(100)
 
-    private fun looksLikeHeader(value: String) = listOf("ii. detalle", "fecha", "comercio", "descripción", "descripcion", "detalle", "total", "cuota", "tasa int").any(value::contains)
+    private fun looksLikeHeader(value: String): Boolean {
+        val hints = listOf("fecha", "comercio", "descripción", "descripcion", "detalle", "total", "cuota", "tasa int")
+        return value in listOf("ii. detalle", "n°", "nº") ||
+            value in hints || hints.count(value::contains) >= 2
+    }
 
     private fun movementType(description: String): String = when {
         listOf("devolucion", "devolución", "reembolso", "reversa", "abono", "credito por").any(description::contains) -> "refund"
