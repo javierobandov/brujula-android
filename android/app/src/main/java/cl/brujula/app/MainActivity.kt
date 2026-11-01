@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -180,37 +181,54 @@ class MainActivity : ComponentActivity() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null }
+    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null && !(it.sourcePackage == "cl.brujula.app.statement" && it.status == "reconciled") }
     val pendingReconciliation = captured.count { it.status == "requires_review" }
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
-    val monthExpenses = expenses.filter { it.receivedAt.isCurrentMonth() }
-    val previousMonthExpenses = expenses.filter { it.receivedAt.isPreviousMonth() }
+    val today = Calendar.getInstance()
+    val thisYear = today.get(Calendar.YEAR)
+    val thisMonth = today.get(Calendar.MONTH)
+    val previous = (today.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
+    val monthExpenses = expenses.filter { it.monthlyExpense(thisYear, thisMonth) > 0 }
+    val previousMonthExpenses = expenses.filter { it.monthlyExpense(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH)) > 0 }
     val monthRefunds = realCaptured.filter { it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
-    val total = monthExpenses.sumOf { it.amount ?: 0 }
-    val previousTotal = previousMonthExpenses.sumOf { it.amount ?: 0 }
+    // The purchase is one obligation; monthly charges, not its full total, feed the cash-flow budget.
+    val total = monthExpenses.sumOf { it.monthlyExpense(thisYear, thisMonth) }
+    val previousTotal = previousMonthExpenses.sumOf { it.monthlyExpense(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH)) }
     val refunds = monthRefunds.sumOf { it.amount ?: 0 }
     val netTotal = (total - refunds).coerceAtLeast(0)
     val calendarExpenses = expenses.filter { it.receivedAt.isMonth(calendarYear, calendarMonth) }
+    val thisMonthPurchases = expenses.filter { it.receivedAt.isCurrentMonth() }
     val planningStore = remember { PlanningStore(activity) }
     val categoryTotals = BudgetCategories
-        .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.amount ?: 0 } }
+        .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
-        .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.amount ?: 0 } }
+        .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
     val categoryLimits = planningStore.categoryLimits().associate { it.category.normalizedBudgetCategory() to it.amount }
-    val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.amount ?: 0 }
+    val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.monthlyExpense(thisYear, thisMonth) }
     val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
     val monthlyBudget = plannedIncomeTotal
     val activeCommitments = planningStore.commitments().filter { it.isActive }
-    val plannedCommitmentTotal = activeCommitments.sumOf { it.amount }
+    val automaticInstallmentTotal = monthExpenses.filter { it.installmentCount > 1 }.sumOf { it.monthlyExpense(thisYear, thisMonth) }
+    val plannedCommitmentTotal = activeCommitments.sumOf { it.amount } + automaticInstallmentTotal
     val monthlyGoal = planningStore.monthlyGoal()
     val plannedAvailable = plannedIncomeTotal - plannedCommitmentTotal - monthlyGoal
-    val realAvailable = plannedAvailable - netTotal
-    val daysElapsed = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-    val daysInMonth = Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
+    // An automatic installment appears in both spent and commitments; deduct it only once.
+    val realAvailable = plannedAvailable - netTotal + automaticInstallmentTotal
+    val daysElapsed = today.get(Calendar.DAY_OF_MONTH)
+    val daysInMonth = today.getActualMaximum(Calendar.DAY_OF_MONTH)
     val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
     val dailySafeAmount = if (daysElapsed < daysInMonth) (realAvailable.coerceAtLeast(0) / (daysInMonth - daysElapsed).coerceAtLeast(1)) else 0
-    val projections = planningStore.projections()
+    val projections = planningStore.projections(months = 12).mapIndexed { offset, projection ->
+        val target = (today.clone() as Calendar).apply { add(Calendar.MONTH, offset) }
+        val year = target.get(Calendar.YEAR)
+        val month = target.get(Calendar.MONTH)
+        val active = expenses.filter { it.installmentCount > 1 && it.monthlyExpense(year, month) > 0 }
+        projection.copy(
+            commitmentTotal = projection.commitmentTotal + active.sumOf { it.monthlyExpense(year, month) },
+            activeCommitments = projection.activeCommitments + active.size
+        )
+    }
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Green,
@@ -255,7 +273,7 @@ class MainActivity : ComponentActivity() {
                     SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal)
                 }
                 item {
-                    BehaviorChartCard(calendarExpenses, netTotal, dailyAverage)
+                    BehaviorChartCard(thisMonthPurchases, thisMonthPurchases.sumOf { it.amount ?: 0 }, if (daysElapsed > 0) thisMonthPurchases.sumOf { it.amount ?: 0 } / daysElapsed else 0)
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -477,7 +495,7 @@ class MainActivity : ComponentActivity() {
                                 if (projections.none { it.commitmentTotal > 0 }) {
                                     Text("Todavía no hay cuotas ni gastos recurrentes. Agrégalos para proyectar tu flujo.", color = Muted, fontSize = 13.sp)
                                 } else {
-                                    projections.take(4).forEach { projection ->
+                                    projections.take(12).forEach { projection ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
                                             Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -498,13 +516,19 @@ class MainActivity : ComponentActivity() {
                         } else {
                             Text("Aún no has registrado ingresos. Agrégalos para calcular tu disponible.", color = Muted, fontSize = 12.sp)
                         }
-                        if (activeCommitments.isNotEmpty()) {
+                        if (activeCommitments.isNotEmpty() || monthExpenses.any { it.installmentCount > 1 }) {
                             Spacer(Modifier.height(12.dp))
                             Text("Compromisos activos", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             activeCommitments.forEach { commitment ->
                                 val installment = if (commitment.hasInstallments) "Cuota ${commitment.currentInstallment}/${commitment.totalInstallments}" else "Recurrente"
                                 PlanningRow("${commitment.name} · ${clp(commitment.amount)}", installment) {
                                     planningStore.deleteCommitment(commitment.id); planningVersion++
+                                }
+                            }
+                            monthExpenses.filter { it.installmentCount > 1 }.forEach { expense ->
+                                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                    Text("${expense.merchant ?: "Compra"} · ${clp(expense.monthlyExpense(thisYear, thisMonth))}", color = Ink, fontWeight = FontWeight.SemiBold)
+                                    Text("${expense.installmentCount} cuotas automáticas · Editar desde Movimientos", color = Muted, fontSize = 12.sp)
                                 }
                             }
                         } else {
@@ -923,12 +947,15 @@ class MainActivity : ComponentActivity() {
             var date by remember(event.id) { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) }
             var category by remember(event.id) { mutableStateOf(event.category) }
             var payment by remember(event.id) { mutableStateOf(event.paymentSource) }
+            var financed by remember(event.id) { mutableStateOf(event.installmentCount > 1) }
+            var installments by remember(event.id) { mutableStateOf(event.installmentCount.coerceAtLeast(2).toString()) }
+            var firstChargeMonth by remember(event.id) { mutableStateOf(event.firstInstallmentMonth ?: SimpleDateFormat("yyyy-MM", Locale.US).format(Date(event.receivedAt))) }
             var error by remember(event.id) { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { editingEvent = null },
                 title = { Text("Editar movimiento") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         OutlinedTextField(merchant, { merchant = it }, label = { Text("Comercio") }, singleLine = true)
                         OutlinedTextField(amount, { amount = it }, label = { Text("Monto en pesos") }, singleLine = true)
                         OutlinedTextField(date, { date = it }, label = { Text("Fecha (AAAA-MM-DD)") }, singleLine = true)
@@ -945,14 +972,38 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                        if (event.movementType == "expense") {
+                            Text("Modalidad de compra", fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(selected = !financed, onClick = { financed = false }, label = { Text("Una cuota") })
+                                FilterChip(selected = financed, onClick = { financed = true; payment = "tarjeta_credito" }, label = { Text("En cuotas") })
+                            }
+                            if (financed) {
+                                OutlinedTextField(installments, { installments = it }, label = { Text("Número total de cuotas") }, singleLine = true)
+                                OutlinedTextField(firstChargeMonth, { firstChargeMonth = it }, label = { Text("Primer mes de cargo (AAAA-MM)") }, singleLine = true)
+                                val parts = installments.toIntOrNull()
+                                val amountValue = parseClpInput(amount)
+                                if (parts != null && parts in 2..120 && amountValue != null && amountValue >= parts) {
+                                    Text("Monto total ${clp(amountValue)} · cuota aproximada ${clp(amountValue / parts)}", color = Muted, fontSize = 12.sp)
+                                }
+                                Text("El total de la compra se conserva. Sus cargos mensuales se proyectan sin duplicar movimientos. Verifica el primer mes según tu tarjeta.", color = Muted, fontSize = 12.sp)
+                            }
+                        }
                         history.take(4).forEach { change -> Text("${change.field}: ${change.oldValue ?: "—"} → ${change.newValue ?: "—"}", color = Muted, fontSize = 10.sp) }
                     }
                 },
                 confirmButton = { TextButton(onClick = {
                     val parsedAmount = parseClpInput(amount)
                     val parsedDate = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(date)?.time }.getOrNull()
+                    val count = if (financed && event.movementType == "expense") installments.toIntOrNull() else 1
+                    val validMonth = Regex("[0-9]{4}-(0[1-9]|1[0-2])").matches(firstChargeMonth)
                     if (merchant.isBlank() || parsedAmount == null || parsedAmount <= 0 || parsedDate == null) error = "Revisa comercio, monto y fecha."
-                    else { CapturedEventStore(activity).updateMovement(event, merchant, parsedAmount, parsedDate, category, payment); captured = CapturedEventStore(activity).recent(10_000); editingEvent = null }
+                    else if (count == null || count !in 1..120 || count > parsedAmount || (count > 1 && (!validMonth || payment != "tarjeta_credito"))) error = "Revisa número de cuotas, primer mes y medio de pago Tarjeta."
+                    else {
+                        CapturedEventStore(activity).updateMovement(event, merchant, parsedAmount, parsedDate, category, payment, count, if (count > 1) firstChargeMonth else null)
+                        captured = CapturedEventStore(activity).recent(10_000)
+                        editingEvent = null
+                    }
                 }) { Text("Guardar") } },
                 dismissButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
             )
@@ -1051,7 +1102,7 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("Gasto por día", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Compras realizadas por día", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text("Detecta cuándo se concentra tu gasto", color = Muted, fontSize = 12.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1123,8 +1174,8 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column {
-                    Text("Ritmo de gasto", color = Color.White, fontSize = 17.sp, fontFamily = FontFamily.Serif)
-                    Text("Acumulado del mes frente a tu ritmo esperado", color = Color(0xFFB8CCC6), fontSize = 11.sp)
+                    Text("Compras registradas", color = Color.White, fontSize = 17.sp, fontFamily = FontFamily.Serif)
+                    Text("Monto original de las compras, distinto de las cuotas del mes", color = Color(0xFFB8CCC6), fontSize = 11.sp)
                 }
                 Text(clp(total), color = Ochre, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
@@ -1337,9 +1388,10 @@ class MainActivity : ComponentActivity() {
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text("${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
+            Text(if (event.installmentCount > 1) "${event.categoryLabel()} · cuota de ${event.installmentCount} · compra ${clp(event.amount ?: 0)}" else "${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
         }
-        Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+        val target = Calendar.getInstance()
+        Text(clp(event.monthlyExpense(target.get(Calendar.YEAR), target.get(Calendar.MONTH))), color = Ink, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1356,6 +1408,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
+            if (event.installmentCount > 1) Text("${event.installmentCount} cuotas · primera ${event.firstInstallmentMonth ?: "por confirmar"}", color = Muted, fontSize = 12.sp)
             if (event.status == "requires_review") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onReview) { Text("Marcar como revisado", color = Green, fontSize = 12.sp) }
@@ -1377,6 +1430,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp) }
             Column(horizontalAlignment = Alignment.End) {
                 Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+                if (event.installmentCount > 1) Text("${event.installmentCount} cuotas · desde ${event.firstInstallmentMonth ?: "por confirmar"}", color = Muted, fontSize = 11.sp)
                 if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
                 TextButton(onClick = onEditCategory) { Text("Editar") }
                 TextButton(onClick = onIgnore) { Text("Ignorar") }
@@ -1435,7 +1489,8 @@ private fun chatGptBrief(
     appendLine()
     appendLine("MOVIMIENTOS RESUMIDOS")
     expenses.sortedByDescending { it.receivedAt }.take(20).forEach { event ->
-        appendLine("- ${event.merchant ?: "Comercio sin nombre"} | ${event.categoryLabel()} | ${clp(event.amount ?: 0)} | ${event.paymentSourceLabel()}")
+        val target = Calendar.getInstance()
+        appendLine("- ${event.merchant ?: "Comercio sin nombre"} | ${event.categoryLabel()} | cargo mensual ${clp(event.monthlyExpense(target.get(Calendar.YEAR), target.get(Calendar.MONTH)))} | compra total ${clp(event.amount ?: 0)} | ${event.paymentSourceLabel()}")
     }
     appendLine()
     appendLine("RESPONDE")
@@ -1487,6 +1542,8 @@ private fun syncBundleJson(events: List<CapturedEvent>, planning: JSONObject? = 
                 put("category", event.category)
                 put("category_manual", event.categoryManual)
                 put("manually_edited", event.manuallyEdited)
+                put("installment_count", event.installmentCount)
+                put("first_installment_month", event.firstInstallmentMonth ?: JSONObject.NULL)
                 put("payment_source", event.paymentSource)
                 put("status", event.status)
                 put("change_history", JSONArray().apply {
@@ -1523,7 +1580,9 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
             paymentSource = event.optString("payment_source", "notificacion"),
             status = status,
             categoryManual = event.optBoolean("category_manual", false),
-            manuallyEdited = event.optBoolean("manually_edited", false)
+            manuallyEdited = event.optBoolean("manually_edited", false),
+            installmentCount = event.optInt("installment_count", 1),
+            firstInstallmentMonth = if (event.isNull("first_installment_month")) null else event.optString("first_installment_month")
         )
         val history = event.optJSONArray("change_history")
         if (history != null) store.importHistory(fingerprint, (0 until history.length()).mapNotNull { changeIndex ->
@@ -1538,7 +1597,7 @@ private fun importSyncBundle(activity: MainActivity, json: String): Int {
     return importedEvents
 }
 private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
-    appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,paquete_origen,texto_original")
+    appendLine("fecha_hora,estado,tipo_movimiento,categoria,medio_pago,comercio,monto,cuotas,primer_mes_cargo,paquete_origen,texto_original")
     events.forEach { event ->
         appendLine(listOf(
             event.receivedAtLabel(),
@@ -1548,6 +1607,8 @@ private fun capturedCsv(events: List<CapturedEvent>): String = buildString {
             event.paymentSourceLabel(),
             event.merchant.orEmpty(),
             event.amount?.toString().orEmpty(),
+            event.installmentCount.toString(),
+            event.firstInstallmentMonth.orEmpty(),
             event.sourcePackage,
             event.rawText
         ).joinToString(",") { csvCell(it) })
