@@ -81,7 +81,9 @@ class FirebaseCloudSync(context: Context) {
                         paymentSource = document.getString("payment_source") ?: "notificacion",
                         status = document.getString("status") ?: "captured",
                         categoryManual = document.getBoolean("category_manual") ?: false,
-                        manuallyEdited = document.getBoolean("manually_edited") ?: false
+                        manuallyEdited = document.getBoolean("manually_edited") ?: false,
+                        installmentCount = (document.getLong("installment_count") ?: 1L).toInt().coerceAtLeast(1),
+                        firstInstallmentMonth = document.getString("first_installment_month")
                     )
                     val history = (document.get("change_history") as? List<*>)?.mapNotNull { value ->
                         val item = value as? Map<*, *> ?: return@mapNotNull null
@@ -124,6 +126,8 @@ class FirebaseCloudSync(context: Context) {
                                     "category" to event.category,
                                     "category_manual" to event.categoryManual,
                                     "manually_edited" to event.manuallyEdited,
+                                    "installment_count" to event.installmentCount,
+                                    "first_installment_month" to event.firstInstallmentMonth,
                                     "change_history" to store.history(event.id).map { change -> mapOf(
                                         "changed_at" to change.changedAt, "field" to change.field,
                                         "old_value" to change.oldValue, "new_value" to change.newValue
