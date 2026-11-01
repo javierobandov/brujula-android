@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -218,7 +219,7 @@ class MainActivity : ComponentActivity() {
     val daysInMonth = today.getActualMaximum(Calendar.DAY_OF_MONTH)
     val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
     val dailySafeAmount = if (daysElapsed < daysInMonth) (realAvailable.coerceAtLeast(0) / (daysInMonth - daysElapsed).coerceAtLeast(1)) else 0
-    val projections = planningStore.projections().mapIndexed { offset, projection ->
+    val projections = planningStore.projections(months = 12).mapIndexed { offset, projection ->
         val target = (today.clone() as Calendar).apply { add(Calendar.MONTH, offset) }
         val year = target.get(Calendar.YEAR)
         val month = target.get(Calendar.MONTH)
@@ -494,7 +495,7 @@ class MainActivity : ComponentActivity() {
                                 if (projections.none { it.commitmentTotal > 0 }) {
                                     Text("Todavía no hay cuotas ni gastos recurrentes. Agrégalos para proyectar tu flujo.", color = Muted, fontSize = 13.sp)
                                 } else {
-                                    projections.take(4).forEach { projection ->
+                                    projections.take(12).forEach { projection ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(projection.label.replaceFirstChar { it.uppercase() }, color = Muted, fontSize = 12.sp)
                                             Text(clp(projection.commitmentTotal), color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
