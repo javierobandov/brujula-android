@@ -181,7 +181,7 @@ class MainActivity : ComponentActivity() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null }
+    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null && !(it.sourcePackage == "cl.brujula.app.statement" && it.status == "reconciled") }
     val pendingReconciliation = captured.count { it.status == "requires_review" }
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
