@@ -20,7 +20,9 @@ data class CapturedEvent(
     val paymentSource: String,
     val status: String,
     val categoryManual: Boolean = false,
-    val manuallyEdited: Boolean = false
+    val manuallyEdited: Boolean = false,
+    val installmentCount: Int = 1,
+    val firstInstallmentMonth: String? = null
 )
 
 data class MovementChange(val id: Long, val eventId: Long, val changedAt: Long, val field: String, val oldValue: String?, val newValue: String?)
@@ -172,7 +174,9 @@ class CapturedEventStore(context: Context) {
         paymentSource: String,
         status: String,
         categoryManual: Boolean = false,
-        manuallyEdited: Boolean = false
+        manuallyEdited: Boolean = false,
+        installmentCount: Int = 1,
+        firstInstallmentMonth: String? = null
     ): Boolean {
         val db = helper.writableDatabase
         db.beginTransaction()
@@ -195,6 +199,7 @@ class CapturedEventStore(context: Context) {
                             put("merchant", merchant); put("amount", amount); put("received_at", receivedAt)
                             put("movement_type", movementType); put("category", category); put("category_manual", if (categoryManual) 1 else 0)
                             put("payment_source", paymentSource); put("manually_edited", 1)
+                            put("installment_count", installmentCount.coerceAtLeast(1)); put("first_installment_month", firstInstallmentMonth)
                         }
                         if (status == "ignored") put("manually_edited", 1)
                     }
@@ -214,6 +219,8 @@ class CapturedEventStore(context: Context) {
                 put("category", category)
                 put("category_manual", if (categoryManual) 1 else 0)
                 put("manually_edited", if (manuallyEdited) 1 else 0)
+                put("installment_count", installmentCount.coerceAtLeast(1))
+                put("first_installment_month", firstInstallmentMonth)
                 put("payment_source", paymentSource)
                 put("status", status)
             }
@@ -302,17 +309,18 @@ class CapturedEventStore(context: Context) {
         return helper.writableDatabase.update("events", values, "id = ?", arrayOf(id.toString()))
     }
 
-    fun updateMovement(event: CapturedEvent, merchant: String, amount: Int, receivedAt: Long, category: String, paymentSource: String): Int {
+    fun updateMovement(event: CapturedEvent, merchant: String, amount: Int, receivedAt: Long, category: String, paymentSource: String, installmentCount: Int = event.installmentCount, firstInstallmentMonth: String? = event.firstInstallmentMonth): Int {
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
             val changes = linkedMapOf("merchant" to (event.merchant.orEmpty() to merchant.trim()), "amount" to (event.amount?.toString() to amount.toString()),
-                "received_at" to (event.receivedAt.toString() to receivedAt.toString()), "category" to (event.category to category), "payment_source" to (event.paymentSource to paymentSource))
+                "received_at" to (event.receivedAt.toString() to receivedAt.toString()), "category" to (event.category to category), "payment_source" to (event.paymentSource to paymentSource),
+                "installment_count" to (event.installmentCount.toString() to installmentCount.toString()), "first_installment_month" to (event.firstInstallmentMonth to firstInstallmentMonth))
             val now = System.currentTimeMillis()
             changes.filterValues { it.first != it.second }.forEach { (field, pair) ->
                 db.insert("movement_changes", null, ContentValues().apply { put("event_id", event.id); put("changed_at", now); put("field", field); put("old_value", pair.first); put("new_value", pair.second) })
             }
-            val count = db.update("events", ContentValues().apply { put("merchant", merchant.trim()); put("amount", amount); put("received_at", receivedAt); put("category", category); put("category_manual", 1); put("payment_source", paymentSource); put("manually_edited", 1) }, "id = ?", arrayOf(event.id.toString()))
+            val count = db.update("events", ContentValues().apply { put("merchant", merchant.trim()); put("amount", amount); put("received_at", receivedAt); put("category", category); put("category_manual", 1); put("payment_source", paymentSource); put("installment_count", installmentCount); put("first_installment_month", firstInstallmentMonth); put("manually_edited", 1) }, "id = ?", arrayOf(event.id.toString()))
             db.setTransactionSuccessful()
             return count
         } finally { db.endTransaction() }
@@ -362,14 +370,16 @@ class CapturedEventStore(context: Context) {
                     paymentSource = cursor.getStringOrNull("payment_source") ?: "notificacion",
                     status = cursor.getString(cursor.getColumnIndexOrThrow("status")),
                     categoryManual = cursor.getInt(cursor.getColumnIndexOrThrow("category_manual")) != 0,
-                    manuallyEdited = cursor.getInt(cursor.getColumnIndexOrThrow("manually_edited")) != 0
+                    manuallyEdited = cursor.getInt(cursor.getColumnIndexOrThrow("manually_edited")) != 0,
+                    installmentCount = cursor.getInt(cursor.getColumnIndexOrThrow("installment_count")),
+                    firstInstallmentMonth = cursor.getStringOrNull("first_installment_month")
                 )
             }
         }
         return result
     }
 
-    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 7) {
+    private class EventDb(context: Context) : SQLiteOpenHelper(context, "finance_capture.db", null, 8) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 """CREATE TABLE events (
@@ -384,6 +394,8 @@ class CapturedEventStore(context: Context) {
                     category TEXT NOT NULL DEFAULT 'otros',
                     category_manual INTEGER NOT NULL DEFAULT 0,
                     payment_source TEXT NOT NULL DEFAULT 'notificacion',
+                    installment_count INTEGER NOT NULL DEFAULT 1,
+                    first_installment_month TEXT,
                     status TEXT NOT NULL
                 )""".trimIndent()
             )
@@ -444,6 +456,10 @@ class CapturedEventStore(context: Context) {
             if (oldVersion < 7) {
                 db.execSQL("ALTER TABLE events ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
                 createHistoryTable(db)
+            }
+            if (oldVersion < 8) {
+                db.execSQL("ALTER TABLE events ADD COLUMN installment_count INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE events ADD COLUMN first_installment_month TEXT")
             }
         }
 
