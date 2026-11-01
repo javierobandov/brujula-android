@@ -1387,9 +1387,10 @@ class MainActivity : ComponentActivity() {
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text("${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
+            Text(if (event.installmentCount > 1) "${event.categoryLabel()} · cuota de ${event.installmentCount} · compra ${clp(event.amount ?: 0)}" else "${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
         }
-        Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
+        val target = Calendar.getInstance()
+        Text(clp(event.monthlyExpense(target.get(Calendar.YEAR), target.get(Calendar.MONTH))), color = Ink, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1487,7 +1488,8 @@ private fun chatGptBrief(
     appendLine()
     appendLine("MOVIMIENTOS RESUMIDOS")
     expenses.sortedByDescending { it.receivedAt }.take(20).forEach { event ->
-        appendLine("- ${event.merchant ?: "Comercio sin nombre"} | ${event.categoryLabel()} | ${clp(event.amount ?: 0)} | ${event.paymentSourceLabel()}")
+        val target = Calendar.getInstance()
+        appendLine("- ${event.merchant ?: "Comercio sin nombre"} | ${event.categoryLabel()} | cargo mensual ${clp(event.monthlyExpense(target.get(Calendar.YEAR), target.get(Calendar.MONTH)))} | compra total ${clp(event.amount ?: 0)} | ${event.paymentSourceLabel()}")
     }
     appendLine()
     appendLine("RESPONDE")
