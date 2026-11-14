@@ -15,10 +15,11 @@ plugins {
 android { namespace = "cl.brujula.app"; compileSdk = 35
     defaultConfig {
         applicationId = "cl.brujula.app"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("versionCode").getOrElse("32").toInt()
-        versionName = providers.gradleProperty("versionName").getOrElse("0.32.0")
+        versionCode = providers.gradleProperty("versionCode").getOrElse("57").toInt()
+        versionName = providers.gradleProperty("versionName").getOrElse("0.33.0")
     }
     buildFeatures { buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -62,6 +63,10 @@ kotlin {
 }
 
 dependencies {
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("org.robolectric:robolectric:4.14.1")

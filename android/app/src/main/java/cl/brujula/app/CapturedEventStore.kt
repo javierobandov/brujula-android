@@ -114,7 +114,9 @@ class CapturedEventStore(context: Context) {
         amount: Int,
         category: String,
         paymentSource: String,
-        receivedAt: Long = System.currentTimeMillis()
+        receivedAt: Long = System.currentTimeMillis(),
+        installmentCount: Int = 1,
+        firstInstallmentMonth: String? = null
     ): Boolean {
         val db = helper.writableDatabase
         val rawText = "MANUAL · $merchant · $amount · $paymentSource"
@@ -129,7 +131,9 @@ class CapturedEventStore(context: Context) {
             put("category", category)
             put("category_manual", 1)
             put("payment_source", paymentSource)
-            put("status", "captured")
+            put("status", "confirmed")
+            put("installment_count", installmentCount)
+            put("first_installment_month", if (installmentCount > 1) firstInstallmentMonth else null)
         }
         return db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
@@ -280,10 +284,11 @@ class CapturedEventStore(context: Context) {
                 return records
             }
             val statements = readRecords("source_package = ? AND status = ?", arrayOf("cl.brujula.app.statement", "requires_review"))
-            val captured = readRecords("source_package != ? AND status IN (?, ?)", arrayOf("cl.brujula.app.statement", "captured", "confirmed"))
+            val captured = readRecords("source_package != ? AND status IN (?, ?, ?)", arrayOf("cl.brujula.app.statement", "captured", "requires_review", "confirmed"))
             val pairs = determineReconciliationPairs(statements, captured)
             pairs.forEach { (statementId, eventId) ->
-                db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(eventId.toString()))
+                // A bank match deduplicates evidence; it must not approve an unconfirmed capture.
+                db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ? AND status = ?", arrayOf(eventId.toString(), "confirmed"))
                 db.update("events", ContentValues().apply { put("status", "reconciled") }, "id = ?", arrayOf(statementId.toString()))
             }
             db.setTransactionSuccessful()
@@ -346,6 +351,13 @@ class CapturedEventStore(context: Context) {
 
     fun deleteDemoEvents(): Int =
         helper.writableDatabase.delete("events", "status = ?", arrayOf("demo"))
+
+    fun confirmMovement(id: Long): Boolean {
+        val changed = helper.writableDatabase.update("events", ContentValues().apply { put("status", "confirmed") },
+            "id = ? AND status IN (?, ?) AND amount > 0 AND merchant IS NOT NULL AND trim(merchant) != ''",
+            arrayOf(id.toString(), "captured", "requires_review"))
+        return changed == 1
+    }
 
     fun updateStatus(id: Long, status: String): Int {
         val values = ContentValues().apply { put("status", status); if (status == "ignored") put("manually_edited", 1) }

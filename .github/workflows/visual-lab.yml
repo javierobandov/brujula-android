@@ -24,24 +24,30 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools platforms;android-35 build-tools;35.0.1 emulator system-images;android-34;google_apis;x86_64
+          packages: platform-tools platforms;android-35 build-tools;35.0.1 emulator system-images;android-34;default;x86_64
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+
+      - name: Enable hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Run emulator and capture screens
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_2
           force-avd-creation: true
-          cores: 4
-          ram-size: 4096M
+          cores: 2
+          ram-size: 2048M
           disk-size: 4096M
-          emulator-boot-timeout: 1200
+          emulator-boot-timeout: 600
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
           disable-animations: true
           script: |
@@ -49,6 +55,10 @@ jobs:
             timeout 30s adb shell am force-stop cl.brujula.app || true
             timeout 30s adb shell monkey -p cl.brujula.app 1
             python tools/capture_visual_lab.py
+            timeout 120s adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w cl.brujula.app.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            grep -q 'OK (3 tests)' instrumentation.txt
+            adb pull /sdcard/Android/data/cl.brujula.app/files/ui-evidence visual-lab/interactions
 
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4
