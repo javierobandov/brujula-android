@@ -3,9 +3,10 @@ name: Android signed release artifact
 on:
   push:
     branches:
-      - codex/reconciliation-cloud-recovery
+      - feat/brujula-visual-02
     paths:
       - .github/workflows/android-release-artifact.yml
+      - "android/**"
 
 permissions:
   contents: read
@@ -53,7 +54,7 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$signing_file"
           chmod 600 "$signing_file"
           test -s "$signing_file"
-          ./gradlew --no-daemon assembleRelease -PversionCode=52 -PversionName=0.28.0
+          ./gradlew --no-daemon assembleRelease -PversionCode=56 -PversionName=0.32.0
           apk="app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose "$apk"
           "$ANDROID_HOME/build-tools/35.0.1/aapt" dump badging "$apk" | sed -n '1p'
@@ -62,7 +63,7 @@ jobs:
       - name: Upload private build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: brujula-release-v0.28.0-code-52
+          name: brujula-release-v0.32.0-code-56
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
