@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
@@ -60,20 +62,20 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 
-private val Green = Color(0xFF173F38)
-private val Paper = Color(0xFFF7F3E9)
-private val Ink = Color(0xFF172522)
-private val Mint = Color(0xFFDCEBE3)
-private val Lavender = Color(0xFFF4D9CF)
-private val Muted = Color(0xFF66736F)
-private val Coral = Color(0xFFE76548)
-private val Ochre = Color(0xFFF0C85B)
-private val Line = Color(0xFFD6DFD9)
 private val BudgetCategories = listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "deudas", "otros")
 private val CategoryColors = listOf(Green, Coral, Ochre, Color(0xFF6C8E84), Color(0xFF8C6A57), Color(0xFFB86A6A), Color(0xFF7A9A72), Color(0xFF8B7767), Color(0xFF9CA9A4))
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { BrujulaApp(this) } }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.statusBarColor = Green.toArgb()
+        window.navigationBarColor = Paper.toArgb()
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = true
+        }
+        setContent { BrujulaApp(this) }
+    }
 }
 
 @Composable fun BrujulaApp(activity: MainActivity) {
@@ -234,6 +236,8 @@ class MainActivity : ComponentActivity() {
             primary = Green,
             onPrimary = Color.White,
             secondary = Coral,
+            secondaryContainer = Mint,
+            onSecondaryContainer = Green,
             onSecondary = Ink,
             tertiary = Ochre,
             background = Paper,
@@ -250,105 +254,73 @@ class MainActivity : ComponentActivity() {
             labelLarge = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
         )
     ) {
-        Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
+        Surface(color = Green, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().background(Paper)) {
+            BrandHeader(onAccount = { selectedTab = 4 })
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 if (selectedTab == 0) {
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Image(painter = painterResource(R.drawable.brujula_logo), contentDescription = "Logo de Brújula", modifier = Modifier.size(38.dp))
-                            Text("BRÚJULA", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                        }
-                        Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0)), modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(role = Role.Button) { selectedTab = 4 }) {
-                            Icon(Icons.Filled.Person, contentDescription = "Cuenta", tint = Green, modifier = Modifier.padding(10.dp).size(26.dp))
-                        }
-                    }
-                }
-                item {
-                    SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal)
-                }
-                item {
-                    BehaviorChartCard(thisMonthPurchases, thisMonthPurchases.sumOf { it.amount ?: 0 }, if (daysElapsed > 0) thisMonthPurchases.sumOf { it.amount ?: 0 } / daysElapsed else 0)
-                }
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric(Icons.Filled.AccountBalanceWallet, "Presupuesto", clp(plannedAvailable.coerceAtLeast(0)), Green, Modifier.weight(1f))
-                        SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
-                        SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), if (pendingReconciliation > 0) Color(0xFF9A6500) else Green, Modifier.weight(1f))
-                    }
-                }
-                item {
-                    Button(
-                        onClick = { showManualDialog = true },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Green),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 1.dp)
-                    ) { Text("＋  Agregar gasto", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-                }
-                item {
-                    CalendarSpendingCard(
-                        expenses = calendarExpenses,
-                        month = calendarMonth,
-                        year = calendarYear,
-                        selectedDay = selectedCalendarDay,
-                        onMonthChange = { delta ->
-                            val next = Calendar.getInstance().apply { set(calendarYear, calendarMonth, 1); add(Calendar.MONTH, delta) }
-                            calendarMonth = next.get(Calendar.MONTH)
-                            calendarYear = next.get(Calendar.YEAR)
-                            selectedCalendarDay = 1
-                        },
-                        onDaySelected = { selectedCalendarDay = it },
-                        onViewMovements = { movementQuery = ""; movementFilter = "Todos"; selectedTab = 1 }
-                    )
-                }
-                item {
-                    CategoryDistributionCard(categoryTotals, netTotal, categoryLimits, uncategorizedTotal)
-                }
-                item {
-                    SpendingPaceCard(netTotal, previousTotal, dailyAverage, dailySafeAmount, realAvailable)
-                }
-                item {
-                    BreakdownCard(
-                        title = "Gasto por medio de pago",
-                        rows = paymentTotals.map { (source, amount) -> source.replace("_", " ").replaceFirstChar { it.uppercase() } to amount },
-                        emptyLabel = "Todavía no hay gastos con medio de pago identificado."
-                    )
-                }
-                if (pendingReconciliation > 0 || uncategorizedTotal > 0) {
                     item {
-                        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5)), modifier = Modifier.clickable(role = Role.Button) { movementFilter = "Pendientes"; selectedTab = 1 }) {
+                        EditorialHeading(SimpleDateFormat("EEEE d / MMMM", Locale.forLanguageTag("es-CL")).format(Date()), "Tu dinero, con rumbo.")
+                    }
+                    item { SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal) }
+                    item { MonthMetrics(netTotal, monthlyGoal) }
+                    if (plannedIncomeTotal > 0) item { BudgetDistribution(netTotal, monthlyGoal, realAvailable) }
+                    item {
+                        Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Ink),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)) {
+                            Text("＋  Agregar gasto", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    item {
+                        Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Actividad reciente", color = Ink, fontSize = 21.sp, fontFamily = FontFamily.Serif, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { selectedTab = 1 }) { Text("Ver todo", color = Green) }
+                                }
+                                val recentSummary = monthExpenses.sortedByDescending { it.receivedAt }.take(3)
+                                if (recentSummary.isEmpty()) Text("Aún no hay gastos reales. Agrega el primero o configura la captura desde Cuenta.", color = Muted, fontSize = 13.sp)
+                                else recentSummary.forEach { event -> SummaryMovementRow(event) }
+                            }
+                        }
+                    }
+                    if (pendingReconciliation > 0 || uncategorizedTotal > 0) item {
+                        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Lavender),
+                            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { movementFilter = "Pendientes"; selectedTab = 1 }) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("Hay decisiones pendientes", color = Ink, fontWeight = FontWeight.Bold)
                                 if (pendingReconciliation > 0) Text("$pendingReconciliation movimientos requieren revisión.", color = Muted, fontSize = 12.sp)
-                                if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros y pueden mejorar tu análisis.", color = Muted, fontSize = 12.sp)
-                                TextButton(onClick = { movementFilter = "Pendientes"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green, fontWeight = FontWeight.Bold) }
+                                if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros.", color = Muted, fontSize = 12.sp)
+                                TextButton(onClick = { movementFilter = "Pendientes"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green) }
                             }
                         }
                     }
-                }
-                item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Actividad reciente", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                TextButton(onClick = { selectedTab = 1 }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text("Ver todo", fontSize = 12.sp, color = Green) }
-                            }
-                            val recentSummary = monthExpenses.sortedByDescending { it.receivedAt }.take(3)
-                            if (recentSummary.isEmpty()) {
-                                Text("Aún no hay gastos reales.", color = Muted, fontSize = 13.sp)
-                            } else {
-                                recentSummary.forEach { event -> SummaryMovementRow(event) }
-                            }
+                    item {
+                        CalendarSpendingCard(expenses = calendarExpenses, month = calendarMonth, year = calendarYear, selectedDay = selectedCalendarDay,
+                            onMonthChange = { delta ->
+                                val next = Calendar.getInstance().apply { set(calendarYear, calendarMonth, 1); add(Calendar.MONTH, delta) }
+                                calendarMonth = next.get(Calendar.MONTH); calendarYear = next.get(Calendar.YEAR); selectedCalendarDay = 1
+                            }, onDaySelected = { selectedCalendarDay = it },
+                            onViewMovements = { movementQuery = ""; movementFilter = "Todos"; selectedTab = 1 })
+                    }
+                    item { BehaviorChartCard(thisMonthPurchases, thisMonthPurchases.sumOf { it.amount ?: 0 }, if (daysElapsed > 0) thisMonthPurchases.sumOf { it.amount ?: 0 } / daysElapsed else 0) }
+                    item { CategoryDistributionCard(categoryTotals, netTotal, categoryLimits, uncategorizedTotal) }
+                    item { SpendingPaceCard(netTotal, previousTotal, dailyAverage, dailySafeAmount, realAvailable) }
+                    item { BreakdownCard("Gasto por medio de pago", paymentTotals.map { (source, amount) -> source.replace("_", " ").replaceFirstChar { it.uppercase() } to amount }, "Todavía no hay gastos con medio de pago identificado.") }
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SummaryMetric(Icons.Filled.AccountBalanceWallet, "Presupuesto", clp(plannedAvailable.coerceAtLeast(0)), Green, Modifier.weight(1f))
+                            SummaryMetric(Icons.Filled.Check, "Conciliación", reconciledCount.toString(), Green, Modifier.weight(1f))
+                            SummaryMetric(Icons.Filled.Description, "Por revisar", pendingReconciliation.toString(), Green, Modifier.weight(1f))
                         }
                     }
                 }
-            }
                 if (selectedTab == 1) {
                     val visibleMovements = captured.filter { event ->
                         val matchesFilter = when (movementFilter) {
@@ -368,9 +340,7 @@ class MainActivity : ComponentActivity() {
                         matchesFilter && matchesQuery && matchesPayment
                     }
                     item {
-                        Text("REGISTRO", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Movimientos", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
-                        Text("Revisa, clasifica y confirma cada gasto.", color = Muted, fontSize = 14.sp)
+                        EditorialHeading("Cada movimiento cuenta", "Movimientos", "Revisa, clasifica y confirma cada gasto.")
                         OutlinedTextField(
                             value = movementQuery,
                             onValueChange = { movementQuery = it },
@@ -381,7 +351,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFFE3E8E5), focusedBorderColor = Green, unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Todos", "Pendientes", "Confirmados").forEach { filter ->
                                 FilterChip(
                                     selected = movementFilter == filter,
@@ -391,7 +361,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Text("Medio de pago", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Todos", "Tarjeta", "Cuenta").forEach { payment ->
                                 FilterChip(
                                     selected = movementPayment == payment,
@@ -445,11 +415,11 @@ class MainActivity : ComponentActivity() {
                 }
                 if (selectedTab == 3) {
                     item {
-                        Text("PLAN DEL MES", color = Green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Planificación", color = Ink, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
-                        Text("Decide cuánto puedes gastar antes de que ocurra.", color = Muted, fontSize = 14.sp)
+                        EditorialHeading("Planifica con calma", "Planificación", "Tu futuro, a la vista.")
                         Spacer(Modifier.height(6.dp))
                         PlanHeroCard(plannedIncomeTotal, plannedCommitmentTotal, monthlyGoal, plannedAvailable)
+                        Spacer(Modifier.height(18.dp))
+                        InstallmentOverview(expenses)
                         Text("Acciones rápidas", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
                         Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             PlanActionTile(Icons.Filled.AccountBalanceWallet, "Ingreso", { showIncomeDialog = true }, Modifier.weight(1f))
@@ -526,10 +496,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             monthExpenses.filter { it.installmentCount > 1 }.forEach { expense ->
-                                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                    Text("${expense.merchant ?: "Compra"} · ${clp(expense.monthlyExpense(thisYear, thisMonth))}", color = Ink, fontWeight = FontWeight.SemiBold)
-                                    Text("${expense.installmentCount} cuotas automáticas · Editar desde Movimientos", color = Muted, fontSize = 12.sp)
-                                }
+                                InstallmentPurchaseRow(expense, expense.monthlyExpense(thisYear, thisMonth), onEdit = { editingEvent = expense })
                             }
                         } else {
                             Text("Sin compromisos activos. Tu proyección se mantiene en cero.", color = Muted, fontSize = 12.sp)
@@ -554,7 +521,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Spacer(Modifier.height(4.dp))
                         Text("Sincronización", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Person, "Cuenta cloud", "Recuperar movimientos en otro teléfono", { showCloudAccountDialog = true })
                                 if (cloudAccountLabel != "Sin cuenta cloud") {
@@ -583,7 +550,7 @@ class MainActivity : ComponentActivity() {
                         }
                         syncStatus?.let { Text(it, color = Green, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
                         Text("Preferencias", color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Permisos de Android para Scotiabank", { selectedTab = 2 })
                                 ActionRow(Icons.Filled.BarChart, "Consultar con ChatGPT", "Compartir un resumen sin datos sensibles", {
@@ -629,7 +596,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     item {
-                        Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                                 ActionRow(Icons.Filled.Description, "Captura de notificaciones", "Abrir permisos de Android", { activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
                                 ActionRow(Icons.Filled.PlayArrow, "Probar clasificación", "Insertar datos ficticios locales", {
@@ -673,7 +640,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            NavigationBar(containerColor = Paper, tonalElevation = 0.dp) {
+            Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+                shape = RoundedCornerShape(26.dp), shadowElevation = 6.dp, color = Color.White) {
+            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp, windowInsets = WindowInsets(0, 0, 0, 0)) {
                 listOf(0 to "Resumen", 1 to "Movimientos", 3 to "Planificación", 4 to "Cuenta").forEach { (tab, label) ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
@@ -695,6 +664,7 @@ class MainActivity : ComponentActivity() {
                         label = { Text(label, fontSize = 11.sp) }
                     )
                 }
+            }
             }
             }
         if (showManualDialog) {
@@ -721,7 +691,7 @@ class MainActivity : ComponentActivity() {
                             singleLine = true
                         )
                         Text("Medio de pago", fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("cuenta_corriente" to "Cuenta corriente", "tarjeta_credito" to "Tarjeta").forEach { (value, label) ->
                                 FilterChip(
                                     selected = manualSource == value,
@@ -731,7 +701,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("servicios" to "Servicios", "casa" to "Casa", "supermercado" to "Supermercado", "salidas" to "Salidas", "auto" to "Auto", "otros" to "Otros").forEach { (value, label) ->
                                 FilterChip(
                                     selected = manualCategory == value,
@@ -914,7 +884,7 @@ class MainActivity : ComponentActivity() {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Ej.: PC, diplomado, mamá") }, singleLine = true)
                         OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto de la cuota") }, singleLine = true)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedTextField(value = currentInput, onValueChange = { currentInput = it }, label = { Text("Cuota actual") }, singleLine = true, modifier = Modifier.weight(1f))
                             OutlinedTextField(value = totalInput, onValueChange = { totalInput = it }, label = { Text("Total cuotas") }, singleLine = true, modifier = Modifier.weight(1f))
                         }
@@ -974,7 +944,7 @@ class MainActivity : ComponentActivity() {
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                         if (event.movementType == "expense") {
                             Text("Modalidad de compra", fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 FilterChip(selected = !financed, onClick = { financed = false }, label = { Text("Una cuota") })
                                 FilterChip(selected = financed, onClick = { financed = true; payment = "tarjeta_credito" }, label = { Text("En cuotas") })
                             }
@@ -1031,25 +1001,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun PlanHeroCard(income: Int, commitments: Int, goal: Int, available: Int) {
-    val availableColor = if (available >= 0) Color.White else Coral
-    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Green)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                Column {
-                    Text("Disponible para gastar", color = Color(0xFFC7DCD4), fontSize = 13.sp)
-                    Text(clp(available), color = availableColor, fontSize = 34.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
-                }
-                Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = if (available >= 0) Color(0xFF2C5D52) else Coral)) {
-                    Text(if (available >= 0) "En control" else "Revisar plan", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
-                }
-            }
-            HorizontalDivider(color = Color(0x557CA69A))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                PlanMetric("Ingresos", income)
-                PlanMetric("Compromisos", commitments)
-                PlanMetric("Meta", goal)
-            }
+    GradientHero {
+        Text("TU PLAN DEL MES", color = Mint, fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
+        Text(clp(available), color = if (available >= 0) Paper else Lavender, fontSize = 36.sp, fontFamily = FontFamily.Serif)
+        Text(if (available >= 0) "Disponible antes de los gastos del mes" else "Los compromisos y la meta superan los ingresos", color = Mint, fontSize = 12.sp)
+        HorizontalDivider(color = Mint.copy(alpha = .25f))
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PlanMetric("Ingresos", income); PlanMetric("Compromisos", commitments); PlanMetric("Meta", goal)
         }
     }
 }
@@ -1201,35 +1161,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, commitments: Int, goal: Int) {
-    val progress = (spent.toFloat() / (available + spent).coerceAtLeast(1)).coerceIn(0f, 1f)
-    Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text("Disponible para gastar", color = Muted, fontSize = 13.sp)
-                    Text(clp(available.coerceAtLeast(0)), color = Ink, fontSize = 35.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Normal)
-                }
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
-                    CircularProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Green,
-                        trackColor = Line,
-                        strokeWidth = 8.dp
-                    )
-                    Text("${(progress * 100).toInt()}%", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(6.dp), color = Green, trackColor = Line)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Column {
-                    Text("Gasto del mes", color = Muted, fontSize = 12.sp)
-                    Text(clp(spent), color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                }
-                Text("${(progress * 100).toInt()}% del presupuesto", color = Muted, fontSize = 11.sp)
-            }
-        }
+@Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int) {
+    val today = Calendar.getInstance()
+    val remainingDays = today.getActualMaximum(Calendar.DAY_OF_MONTH) - today.get(Calendar.DAY_OF_MONTH)
+    GradientHero {
+        Text("DISPONIBLE ESTE MES", color = Mint, fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
+        Text(if (income > 0) clp(available) else "Configura tu plan", color = if (available < 0 && income > 0) Lavender else Paper,
+            fontSize = if (income > 0) 40.sp else 29.sp, lineHeight = 48.sp, fontFamily = FontFamily.Serif)
+        Text(if (income > 0) "Después de compromisos y ahorro" else "Agrega ingresos y compromisos en Planificación.", color = Mint, fontSize = 12.sp)
+        HorizontalDivider(color = Mint.copy(alpha = .25f))
+        Text(if (income > 0 && remainingDays > 0) "${clp(available.coerceAtLeast(0) / remainingDays)} por día · $remainingDays días restantes"
+            else if (income > 0) "Cierre del mes · Gasto ${clp(spent)}" else "Tus gastos siguen registrándose con normalidad.", color = Paper, fontSize = 12.sp)
     }
 }
 
@@ -1247,7 +1189,7 @@ class MainActivity : ComponentActivity() {
     uncategorized: Int
 ) {
     val visible = rows.filter { it.second > 0 }.sortedByDescending { it.second }
-    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Dónde se va el dinero", color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Text(if (total > 0) "Distribución real de tus gastos del mes" else "Todavía no hay gastos para distribuir", color = Muted, fontSize = 12.sp)
@@ -1310,7 +1252,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun BreakdownCard(title: String, rows: List<Pair<String, Int>>, emptyLabel: String) {
     val visibleRows = rows.filter { it.second > 0 }.sortedByDescending { it.second }
-    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             if (visibleRows.isEmpty()) {
@@ -1396,7 +1338,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}, onEdit: (() -> Unit)? = null, onIgnore: (() -> Unit)? = null) {
-    Card(shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = if (event.status == "requires_review") Color(0xFFFFF0D6) else Mint)) {
@@ -1424,13 +1366,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onIgnore: () -> Unit, onConfirm: () -> Unit) {
-    Card(shape = RoundedCornerShape(13.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold); Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp) }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(clp(event.amount ?: 0), color = Ink, fontWeight = FontWeight.Bold)
-                if (event.installmentCount > 1) Text("${event.installmentCount} cuotas · desde ${event.firstInstallmentMonth ?: "por confirmar"}", color = Muted, fontSize = 11.sp)
+    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(clp(event.amount ?: 0), color = Green, fontFamily = FontFamily.Serif, fontSize = 23.sp)
+            Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
+            if (event.installmentCount > 1) Text("${event.installmentCount} cuotas · desde ${event.firstInstallmentMonth ?: "por confirmar"}", color = Muted, fontSize = 12.sp)
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
                 TextButton(onClick = onEditCategory) { Text("Editar") }
                 TextButton(onClick = onIgnore) { Text("Ignorar") }

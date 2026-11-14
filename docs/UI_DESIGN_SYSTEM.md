@@ -1,5 +1,7 @@
 # Sistema de interfaz de Brújula
 
+> La [dirección visual 02](VISUAL_02.md) actualiza la paleta y los componentes descritos abajo. Los principios funcionales y de seguridad se conservan.
+
 Este documento adapta los principios de `expo-app-design` a la aplicación Android nativa con Jetpack Compose. No se incorporan Expo, React Native ni NativeWind: se aplican las mismas decisiones de producto usando Material 3 y componentes Compose.
 
 ## Principios
