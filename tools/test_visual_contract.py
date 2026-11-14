@@ -5,12 +5,12 @@ SOURCE = Path(__file__).parents[1] / "android/app/src/main/java/cl/brujula/app/M
 
 
 def test_visual_contract() -> None:
-    source = SOURCE.read_text(encoding="utf-8")
+    source = SOURCE.read_text(encoding="utf-8") + (SOURCE.parent / "VisualDesign.kt").read_text(encoding="utf-8")
     required_labels = (
         'Text("BRÚJULA"',
         'Text("Actividad reciente"',
         '1 to "Movimientos"',
-        'Text("Planificación"',
+        '"Planificación"',
         'Text("Cuenta"',
         '"Consultar con ChatGPT"',
     )
