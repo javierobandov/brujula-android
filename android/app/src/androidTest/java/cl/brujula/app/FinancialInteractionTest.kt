@@ -68,6 +68,7 @@ class FinancialInteractionTest {
         ui.onNodeWithText("Guardar pendiente").performClick()
         val edited = CapturedEventStore(context).recent().single()
         assertEquals(original.id, edited.id)
+        assertEquals(original.receivedAt, edited.receivedAt)
         assertEquals("captured", edited.status)
         assertEquals(15_000, edited.amount)
         assertTrue(CapturedEventStore(context).history(edited.id).any { it.field=="amount" })

@@ -19,6 +19,8 @@ Las pruebas locales incluyen reserva/confirmación, deduplicación de cartola, d
 
 `Visual lab` ejecuta un AVD AOSP sin servicios Google: captura las cuatro secciones y texto al 150%, y ejecuta tres pruebas reales de interfaz: confirmar sin doble descuento y reiniciar, editar manteniendo pendiente, y agregar una compra manual en cuotas. Sus datos son sintéticos y pertenecen exclusivamente al dispositivo de prueba.
 
+La release pública usa el `versionCode` versionado en Gradle (57 para 0.33.0), igual que la APK de entrega, para evitar una degradación de código de versión al publicar después.
+
 ## Límites
 
 El disponible es una proyección de presupuesto, no el saldo bancario ni el cupo de la tarjeta. La app no conecta directamente al banco. Los compromisos manuales representan reservas adicionales: no registrar allí otra vez una compra ya capturada en cuotas. La resolución de conflictos de planificación entre dispositivos conserva el mecanismo existente; no se incorporó edición concurrente. La aceptación final en el teléfono real requiere instalar la actualización y revisar notificaciones y permisos del dispositivo.

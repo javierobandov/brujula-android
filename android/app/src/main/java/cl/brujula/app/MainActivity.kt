@@ -317,12 +317,12 @@ class MainActivity : ComponentActivity() {
                     }
                     if (pendingReconciliation > 0 || uncategorizedTotal > 0) item {
                         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Lavender),
-                            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { movementFilter = "Pendientes"; movementQuery = ""; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) {
+                            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { movementFilter = if (pendingReconciliation > 0) "Pendientes" else "Todos"; movementQuery = if (pendingReconciliation > 0) "" else "otros"; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("Hay decisiones pendientes", color = Ink, fontWeight = FontWeight.Bold)
                                 if (pendingReconciliation > 0) Text("$pendingReconciliation movimientos requieren revisión.", color = Muted, fontSize = 12.sp)
                                 if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros.", color = Muted, fontSize = 12.sp)
-                                TextButton(onClick = { movementFilter = "Pendientes"; movementQuery = ""; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green) }
+                                TextButton(onClick = { movementFilter = if (pendingReconciliation > 0) "Pendientes" else "Todos"; movementQuery = if (pendingReconciliation > 0) "" else "otros"; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) { Text(if (pendingReconciliation > 0) "Abrir pendientes →" else "Revisar categorías →", color = Green) }
                             }
                         }
                     }
@@ -632,10 +632,10 @@ class MainActivity : ComponentActivity() {
                         item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(captured) { event ->
-                            CapturedEventRow(event) {
-                                CapturedEventStore(activity).confirmMovement(event.id)
+                            CapturedEventRow(event, onReview = {
+                                if (!CapturedEventStore(activity).confirmMovement(event.id)) editingEventId = event.id
                                 captured = CapturedEventStore(activity).recent(10_000)
-                            }
+                            }, onEdit = { editingEventId = event.id }, onIgnore = { ignoringEvent = event })
                         }
                     }
                     item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
@@ -648,7 +648,7 @@ class MainActivity : ComponentActivity() {
                                 onEditCategory = { editingEventId = event.id },
                                 onIgnore = { ignoringEvent = event },
                                 onConfirm = {
-                                    CapturedEventStore(activity).confirmMovement(event.id)
+                                    if (!CapturedEventStore(activity).confirmMovement(event.id)) editingEventId = event.id
                                     captured = CapturedEventStore(activity).recent(10_000)
                                 }
                             )
@@ -842,7 +842,7 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showGoalDialog = false },
                 title = { Text("Meta mensual") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = goalInput, onValueChange = { goalInput = it }, label = { Text("Monto objetivo en pesos") }, singleLine = true)
                         Text("Es la reserva mensual de ahorro. Se resta del disponible para gastar.", color = Muted, fontSize = 12.sp)
                         goalError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
@@ -866,14 +866,14 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showCategoryLimitDialog = false },
                 title = { Text("Límite por área") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Define cuánto quieres permitir en cada área durante el mes.", color = Muted, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             BudgetCategories.take(5).forEach { category ->
                                 FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             BudgetCategories.drop(5).forEach { category ->
                                 FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
                             }
@@ -902,7 +902,7 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showIncomeDialog = false },
                 title = { Text(if (editingIncomeId == null) "Agregar ingreso" else "Editar ingreso") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre: sueldo, DAP, Integra…") }, singleLine = true)
                         OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto mensual") }, singleLine = true)
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
@@ -971,7 +971,7 @@ class MainActivity : ComponentActivity() {
             var error by remember(event.id) { mutableStateOf<String?>(null) }
             fun saveMovement(confirm: Boolean) {
                     val parsedAmount = parseClpInput(amount)
-                    val parsedDate = parseDateInput(date)
+                    val parsedDate = if (date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) event.receivedAt else parseDateInput(date)
                     val count = if (financed && event.movementType == "expense") installments.toIntOrNull() else 1
                     val validMonth = Regex("[0-9]{4}-(0[1-9]|1[0-2])").matches(firstChargeMonth)
                     if (merchant.isBlank() || parsedAmount == null || parsedAmount <= 0 || parsedDate == null) error = "Revisa comercio, monto y fecha."
