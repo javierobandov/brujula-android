@@ -56,9 +56,9 @@ jobs:
             timeout 30s adb shell monkey -p cl.brujula.app 1
             python tools/capture_visual_lab.py
             timeout 120s adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w cl.brujula.app.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
-            grep -q 'OK (3 tests)' instrumentation.txt
+            adb shell am instrument -w cl.brujula.app.test/androidx.test.runner.AndroidJUnitRunner | tee visual-lab/instrumentation.txt
             adb pull /sdcard/Android/data/cl.brujula.app/files/ui-evidence visual-lab/interactions
+            grep -q 'OK (3 tests)' visual-lab/instrumentation.txt
 
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4

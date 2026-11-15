@@ -90,6 +90,7 @@ class FinancialInteractionTest {
         assertEquals(120_000, purchase.amount)
         assertEquals(3, purchase.installmentCount)
         assertEquals("confirmed", purchase.status)
+        ui.onNodeWithTag("main-list").performScrollToIndex(0)
         ui.onNodeWithTag("available-amount").assertTextEquals(money(50_000))
         capture("04-compra-cuotas")
     }
