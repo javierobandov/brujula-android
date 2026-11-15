@@ -117,8 +117,8 @@ private fun money(value: Int) = NumberFormat.getCurrencyInstance(Locale.forLangu
     }
 }
 
-@Composable internal fun BudgetDistribution(spent: Int, goal: Int, available: Int) {
-    val parts = listOf(spent.coerceAtLeast(0), goal.coerceAtLeast(0), available.coerceAtLeast(0))
+@Composable internal fun BudgetDistribution(spent: Int, goal: Int, available: Int, pending: Int, commitments: Int) {
+    val parts = listOf(spent.coerceAtLeast(0), pending.coerceAtLeast(0), commitments.coerceAtLeast(0), goal.coerceAtLeast(0), available.coerceAtLeast(0))
     val total = parts.sumOf { it.toLong() }
     if (total == 0L) return
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -126,11 +126,13 @@ private fun money(value: Int) = NumberFormat.getCurrencyInstance(Locale.forLangu
         Row(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             parts.forEachIndexed { index, value ->
                 if (value > 0) Box(Modifier.weight(value.toFloat() / total).fillMaxHeight()
-                    .background(listOf(Coral, Ochre, Green)[index]))
+                    .background(listOf(Coral, Lavender, HeroEnd, Ochre, Green)[index]))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Gasto", color = Muted, fontSize = 11.sp)
+            Text("Confirmado", color = Muted, fontSize = 10.sp)
+            Text("Pendiente", color = Muted, fontSize = 10.sp)
+            Text("Fijo", color = Muted, fontSize = 10.sp)
             Text("Ahorro", color = Muted, fontSize = 11.sp)
             Text(if (available < 0) "Plan excedido" else "Disponible", color = Green, fontSize = 11.sp)
         }
@@ -149,7 +151,7 @@ private fun money(value: Int) = NumberFormat.getCurrencyInstance(Locale.forLangu
     GradientHero {
         Text("CUOTAS DE ESTE MES", color = Mint, fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
         Text(money(values.first()), color = Paper, fontFamily = FontFamily.Serif, fontSize = 36.sp)
-        Text("Incluidas en el gasto del mes; no se suman otra vez.", color = Mint, fontSize = 12.sp)
+        Text("Confirmadas y pendientes; el disponible las descuenta una sola vez.", color = Mint, fontSize = 12.sp)
     }
     Spacer(Modifier.height(16.dp))
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
@@ -183,7 +185,11 @@ private fun money(value: Int) = NumberFormat.getCurrencyInstance(Locale.forLangu
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(event.merchant ?: "Compra en cuotas", color = Ink, fontWeight = FontWeight.SemiBold)
             Text("${money(monthly)} / mes", color = Green, fontSize = 20.sp, fontFamily = FontFamily.Serif)
-            Text("${event.installmentCount} cuotas · Desde ${event.firstInstallmentMonth ?: "fecha de compra"}", color = Muted, fontSize = 12.sp)
+            val now = Calendar.getInstance()
+            val first = event.firstInstallmentMonth ?: SimpleDateFormat("yyyy-MM", Locale.US).format(event.receivedAt)
+            val number = installmentNumber(first, now.get(Calendar.YEAR), now.get(Calendar.MONTH))
+            val progress = when { number < 1 -> "Comienza en $first"; number > event.installmentCount -> "Cuotas finalizadas"; else -> "Cuota $number de ${event.installmentCount}" }
+            Text("$progress · ${if (event.isPending) "Pendiente de confirmar" else "Confirmada"}", color = Muted, fontSize = 12.sp)
             Text("Compra total: ${money(event.amount ?: 0)} · Toca para editar", color = Muted, fontSize = 11.sp)
         }
     }

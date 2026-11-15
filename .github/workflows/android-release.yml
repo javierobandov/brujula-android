@@ -49,9 +49,8 @@ jobs:
           BRUJULA_FIREBASE_PROJECT_ID: "brujula-finanzas-20261011"
         run: |
           VERSION_NAME="${GITHUB_REF_NAME#v}"
-          ./gradlew --no-daemon assembleRelease \
-            -PversionCode="$GITHUB_RUN_NUMBER" \
-            -PversionName="$VERSION_NAME"
+          # Keep the tracked versionCode so a public release can update artifact builds too.
+          ./gradlew --no-daemon assembleRelease -PversionName="$VERSION_NAME"
 
       - name: Publish APK
         uses: softprops/action-gh-release@v2

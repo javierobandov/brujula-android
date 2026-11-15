@@ -33,9 +33,15 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
@@ -88,24 +94,32 @@ class MainActivity : ComponentActivity() {
     var cloudAccountLabel by remember { mutableStateOf(firebaseSync.currentUserEmail() ?: "Sin cuenta cloud") }
     var showCloudAccountDialog by remember { mutableStateOf(false) }
     var captured by remember { mutableStateOf(CapturedEventStore(activity).recent(10_000)) }
-    var editingEvent by remember { mutableStateOf<CapturedEvent?>(null) }
+    var editingEventId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val editingEvent = captured.firstOrNull { it.id == editingEventId }
     var ignoringEvent by remember { mutableStateOf<CapturedEvent?>(null) }
-    var showManualDialog by remember { mutableStateOf(false) }
+    var showManualDialog by rememberSaveable { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var statementStatus by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
-    var showIncomeDialog by remember { mutableStateOf(false) }
-    var showCommitmentDialog by remember { mutableStateOf(false) }
-    var showGoalDialog by remember { mutableStateOf(false) }
-    var showCategoryLimitDialog by remember { mutableStateOf(false) }
+    var showIncomeDialog by rememberSaveable { mutableStateOf(false) }
+    var showCommitmentDialog by rememberSaveable { mutableStateOf(false) }
+    var showGoalDialog by rememberSaveable { mutableStateOf(false) }
+    var showCategoryLimitDialog by rememberSaveable { mutableStateOf(false) }
     var planningVersion by remember { mutableIntStateOf(0) }
-    var selectedTab by remember { mutableStateOf(0) }
-    var movementFilter by remember { mutableStateOf("Todos") }
-    var movementQuery by remember { mutableStateOf("") }
-    var movementPayment by remember { mutableStateOf("Todos") }
-    var calendarMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
-    var calendarYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
-    var selectedCalendarDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var movementFilter by rememberSaveable { mutableStateOf("Todos") }
+    var movementQuery by rememberSaveable { mutableStateOf("") }
+    var movementPayment by rememberSaveable { mutableStateOf("Todos") }
+    var calendarMonth by rememberSaveable { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
+    var calendarYear by rememberSaveable { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
+    var selectedCalendarDay by rememberSaveable { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
+    var movementDay by rememberSaveable { mutableStateOf<String?>(null) }
+    var calendarRequested by rememberSaveable { mutableStateOf(false) }
+    var editingIncomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingCommitmentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletePlanningId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletePlanningKind by rememberSaveable { mutableStateOf("income") }
+    val movementListState = rememberLazyListState()
     val statementLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val imported = runCatching {
@@ -163,6 +177,7 @@ class MainActivity : ComponentActivity() {
         uri ?: return@rememberLauncherForActivityResult
         val json = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val imported = importSyncBundle(activity, json)
+        planningVersion++
         captured = CapturedEventStore(activity).recent(10_000)
         syncStatus = if (imported == 0) "No se encontraron movimientos nuevos en el paquete." else "Se incorporaron $imported movimientos nuevos."
     }
@@ -176,6 +191,7 @@ class MainActivity : ComponentActivity() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                planningVersion++
                 captured = CapturedEventStore(activity).recent(10_000)
                 updateChecker.resumePendingInstall { updateStatus = it }
             }
@@ -183,8 +199,8 @@ class MainActivity : ComponentActivity() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val realCaptured = captured.filter { it.status in setOf("captured", "confirmed", "reconciled") && it.amount != null && !(it.sourcePackage == "cl.brujula.app.statement" && it.status == "reconciled") }
-    val pendingReconciliation = captured.count { it.status == "requires_review" }
+    val realCaptured = captured.filter { it.isLedgerEvent }
+    val pendingReconciliation = realCaptured.count { it.isPending }
     val reconciledCount = captured.count { it.status == "reconciled" }
     val expenses = realCaptured.filter { it.movementType == "expense" }
     val today = Calendar.getInstance()
@@ -193,19 +209,19 @@ class MainActivity : ComponentActivity() {
     val previous = (today.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
     val monthExpenses = expenses.filter { it.monthlyExpense(thisYear, thisMonth) > 0 }
     val previousMonthExpenses = expenses.filter { it.monthlyExpense(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH)) > 0 }
-    val monthRefunds = realCaptured.filter { it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
+    val monthRefunds = realCaptured.filter { it.isConfirmed && it.movementType == "refund" && it.receivedAt.isCurrentMonth() }
     // The purchase is one obligation; monthly charges, not its full total, feed the cash-flow budget.
-    val total = monthExpenses.sumOf { it.monthlyExpense(thisYear, thisMonth) }
-    val previousTotal = previousMonthExpenses.sumOf { it.monthlyExpense(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH)) }
-    val refunds = monthRefunds.sumOf { it.amount ?: 0 }
-    val netTotal = (total - refunds).coerceAtLeast(0)
+        val total = monthExpenses.sumOf { it.monthlyExpense(thisYear, thisMonth) }
     val calendarExpenses = expenses.filter { it.receivedAt.isMonth(calendarYear, calendarMonth) }
-    val thisMonthPurchases = expenses.filter { it.receivedAt.isCurrentMonth() }
-    val planningStore = remember { PlanningStore(activity) }
+    val previousTotal = previousMonthExpenses.filter { it.isConfirmed }.sumOf { it.monthlyExpense(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH)) }
+    val refunds = monthRefunds.sumOf { it.amount ?: 0 }
+    val netTotal = (monthExpenses.filter { it.isConfirmed }.sumOf { it.monthlyExpense(thisYear, thisMonth) } - refunds).coerceAtLeast(0)
+        val thisMonthPurchases = expenses.filter { it.isConfirmed && it.receivedAt.isCurrentMonth() }
+    val planningStore = remember(planningVersion) { PlanningStore(activity) }
     val categoryTotals = BudgetCategories
-        .map { category -> category to monthExpenses.filter { it.category.normalizedBudgetCategory() == category }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
+        .map { category -> category to monthExpenses.filter { it.isConfirmed && it.category.normalizedBudgetCategory() == category }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
     val paymentTotals = listOf("tarjeta_credito", "cuenta_corriente", "manual", "cartola")
-        .map { source -> source to monthExpenses.filter { it.paymentSource == source }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
+        .map { source -> source to monthExpenses.filter { it.isConfirmed && it.paymentSource == source }.sumOf { it.monthlyExpense(thisYear, thisMonth) } }
     val categoryLimits = planningStore.categoryLimits().associate { it.category.normalizedBudgetCategory() to it.amount }
     val uncategorizedTotal = monthExpenses.filter { it.category.normalizedBudgetCategory() == "otros" }.sumOf { it.monthlyExpense(thisYear, thisMonth) }
     val plannedIncomeTotal = planningStore.incomes().sumOf { it.amount }
@@ -216,7 +232,9 @@ class MainActivity : ComponentActivity() {
     val monthlyGoal = planningStore.monthlyGoal()
     val plannedAvailable = plannedIncomeTotal - plannedCommitmentTotal - monthlyGoal
     // An automatic installment appears in both spent and commitments; deduct it only once.
-    val realAvailable = plannedAvailable - netTotal + automaticInstallmentTotal
+    val budgetSnapshot = monthlyBudget(realCaptured, plannedIncomeTotal, activeCommitments.sumOf { it.amount }, monthlyGoal, thisYear, thisMonth)
+    val pendingReserved = budgetSnapshot.pendingReserved
+    val realAvailable = budgetSnapshot.available
     val daysElapsed = today.get(Calendar.DAY_OF_MONTH)
     val daysInMonth = today.getActualMaximum(Calendar.DAY_OF_MONTH)
     val dailyAverage = if (daysElapsed > 0) netTotal / daysElapsed else 0
@@ -230,6 +248,13 @@ class MainActivity : ComponentActivity() {
             commitmentTotal = projection.commitmentTotal + active.sumOf { it.monthlyExpense(year, month) },
             activeCommitments = projection.activeCommitments + active.size
         )
+    }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 0 && calendarRequested) {
+            val index = 5 + (if (plannedIncomeTotal > 0) 1 else 0) + (if (pendingReconciliation > 0 || uncategorizedTotal > 0) 1 else 0)
+            movementListState.scrollToItem(index)
+            calendarRequested = false
+        } else movementListState.scrollToItem(0)
     }
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -258,7 +283,8 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().background(Paper)) {
             BrandHeader(onAccount = { selectedTab = 4 })
             LazyColumn(
-                modifier = Modifier.weight(1f),
+                state = movementListState,
+                modifier = Modifier.weight(1f).testTag("main-list"),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
@@ -266,9 +292,9 @@ class MainActivity : ComponentActivity() {
                     item {
                         EditorialHeading(SimpleDateFormat("EEEE d / MMMM", Locale.forLanguageTag("es-CL")).format(Date()), "Tu dinero, con rumbo.")
                     }
-                    item { SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal) }
+                    item { SummaryHeroCard(realAvailable, netTotal, plannedIncomeTotal, pendingReserved, pendingReconciliation) }
                     item { MonthMetrics(netTotal, monthlyGoal) }
-                    if (plannedIncomeTotal > 0) item { BudgetDistribution(netTotal, monthlyGoal, realAvailable) }
+                    if (plannedIncomeTotal > 0) item { BudgetDistribution(netTotal, monthlyGoal, realAvailable, pendingReserved, activeCommitments.sumOf { it.amount }) }
                     item {
                         Button(onClick = { showManualDialog = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp),
                             shape = RoundedCornerShape(20.dp),
@@ -282,22 +308,22 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Text("Actividad reciente", color = Ink, fontSize = 21.sp, fontFamily = FontFamily.Serif, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { selectedTab = 1 }) { Text("Ver todo", color = Green) }
+                                    TextButton(onClick = { movementFilter = "Todos"; movementQuery = ""; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) { Text("Ver todo", color = Green) }
                                 }
                                 val recentSummary = monthExpenses.sortedByDescending { it.receivedAt }.take(3)
                                 if (recentSummary.isEmpty()) Text("Aún no hay gastos reales. Agrega el primero o configura la captura desde Cuenta.", color = Muted, fontSize = 13.sp)
-                                else recentSummary.forEach { event -> SummaryMovementRow(event) }
+                                else recentSummary.forEach { event -> SummaryMovementRow(event) { editingEventId = event.id } }
                             }
                         }
                     }
                     if (pendingReconciliation > 0 || uncategorizedTotal > 0) item {
                         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Lavender),
-                            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { movementFilter = "Pendientes"; selectedTab = 1 }) {
+                            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { movementFilter = if (pendingReconciliation > 0) "Pendientes" else "Todos"; movementQuery = if (pendingReconciliation > 0) "" else "otros"; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) {
                             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("Hay decisiones pendientes", color = Ink, fontWeight = FontWeight.Bold)
                                 if (pendingReconciliation > 0) Text("$pendingReconciliation movimientos requieren revisión.", color = Muted, fontSize = 12.sp)
                                 if (uncategorizedTotal > 0) Text("${clp(uncategorizedTotal)} están en Otros.", color = Muted, fontSize = 12.sp)
-                                TextButton(onClick = { movementFilter = "Pendientes"; selectedTab = 1 }) { Text("Abrir pendientes →", color = Green) }
+                                TextButton(onClick = { movementFilter = if (pendingReconciliation > 0) "Pendientes" else "Todos"; movementQuery = if (pendingReconciliation > 0) "" else "otros"; movementDay = null; movementPayment = "Todos"; selectedTab = 1 }) { Text(if (pendingReconciliation > 0) "Abrir pendientes →" else "Revisar categorías →", color = Green) }
                             }
                         }
                     }
@@ -307,7 +333,7 @@ class MainActivity : ComponentActivity() {
                                 val next = Calendar.getInstance().apply { set(calendarYear, calendarMonth, 1); add(Calendar.MONTH, delta) }
                                 calendarMonth = next.get(Calendar.MONTH); calendarYear = next.get(Calendar.YEAR); selectedCalendarDay = 1
                             }, onDaySelected = { selectedCalendarDay = it },
-                            onViewMovements = { movementQuery = ""; movementFilter = "Todos"; selectedTab = 1 })
+                            onViewMovements = { movementQuery = ""; movementFilter = "Todos"; movementPayment = "Todos"; movementDay = "%04d-%02d-%02d".format(calendarYear, calendarMonth + 1, selectedCalendarDay); selectedTab = 1 })
                     }
                     item { BehaviorChartCard(thisMonthPurchases, thisMonthPurchases.sumOf { it.amount ?: 0 }, if (daysElapsed > 0) thisMonthPurchases.sumOf { it.amount ?: 0 } / daysElapsed else 0) }
                     item { CategoryDistributionCard(categoryTotals, netTotal, categoryLimits, uncategorizedTotal) }
@@ -322,25 +348,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (selectedTab == 1) {
-                    val visibleMovements = captured.filter { event ->
-                        val matchesFilter = when (movementFilter) {
-                            "Pendientes" -> event.status == "captured" || event.status == "requires_review"
-                            "Confirmados" -> event.status == "confirmed" || event.status == "reconciled"
-                            else -> true
-                        }
-                        val query = movementQuery.trim()
-                        val matchesQuery = query.isBlank() ||
-                            event.merchant.orEmpty().contains(query, ignoreCase = true) ||
-                            event.rawText.contains(query, ignoreCase = true)
-                        val matchesPayment = when (movementPayment) {
-                            "Tarjeta" -> event.paymentSource == "tarjeta_credito"
-                            "Cuenta" -> event.paymentSource == "cuenta_corriente"
-                            else -> true
-                        }
-                        matchesFilter && matchesQuery && matchesPayment
+                    val visibleMovements = realCaptured.filter { event ->
+                        movementMatches(event, movementQuery, movementFilter, movementPayment, movementDay)
                     }
                     item {
                         EditorialHeading("Cada movimiento cuenta", "Movimientos", "Revisa, clasifica y confirma cada gasto.")
+                        movementDay?.let { day ->
+                            InputChip(selected = true, onClick = { movementDay = null }, label = { Text("Fecha: $day · Quitar filtro") })
+                        }
                         OutlinedTextField(
                             value = movementQuery,
                             onValueChange = { movementQuery = it },
@@ -372,25 +387,25 @@ class MainActivity : ComponentActivity() {
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("${visibleMovements.size} movimiento(s) visible(s)", color = Muted, fontSize = 12.sp)
-                            TextButton(onClick = { selectedTab = 0 }) { Text("Ver calendario", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            TextButton(onClick = { calendarRequested = true; selectedTab = 0 }) { Text("Ver calendario", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                     if (visibleMovements.isEmpty()) {
                         item { Text("No hay movimientos que coincidan con esta búsqueda.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(visibleMovements) { event ->
-                            if (event.status == "requires_review" || event.status == "captured") {
+                            if (event.isPending) {
                                 CapturedExpenseRow(
                                     event = event,
-                                    onEditCategory = { editingEvent = event },
+                                    onEditCategory = { editingEventId = event.id },
                                     onIgnore = { ignoringEvent = event },
                                     onConfirm = {
-                                        CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                        if (!CapturedEventStore(activity).confirmMovement(event.id)) editingEventId = event.id
                                         captured = CapturedEventStore(activity).recent(10_000)
                                     }
                                 )
                             } else {
-                                CapturedEventRow(event, onEdit = { editingEvent = event }, onIgnore = { ignoringEvent = event })
+                                CapturedEventRow(event, onEdit = { editingEventId = event.id }, onIgnore = { ignoringEvent = event })
                             }
                         }
                     }
@@ -422,8 +437,8 @@ class MainActivity : ComponentActivity() {
                         InstallmentOverview(expenses)
                         Text("Acciones rápidas", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
                         Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PlanActionTile(Icons.Filled.AccountBalanceWallet, "Ingreso", { showIncomeDialog = true }, Modifier.weight(1f))
-                            PlanActionTile(Icons.Filled.Description, "Compromiso", { showCommitmentDialog = true }, Modifier.weight(1f))
+                            PlanActionTile(Icons.Filled.AccountBalanceWallet, "Ingreso", { editingIncomeId = null; showIncomeDialog = true }, Modifier.weight(1f))
+                            PlanActionTile(Icons.Filled.Description, "Compromiso", { editingCommitmentId = null; showCommitmentDialog = true }, Modifier.weight(1f))
                             PlanActionTile(Icons.Filled.Check, "Meta", { showGoalDialog = true }, Modifier.weight(1f))
                         }
                         Spacer(Modifier.height(14.dp))
@@ -479,24 +494,24 @@ class MainActivity : ComponentActivity() {
                             Text("Ingresos registrados", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(2.dp))
                             planningStore.incomes().forEach { income ->
-                                PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente") {
-                                    planningStore.deleteIncome(income.id); planningVersion++
+                                PlanningRow("${income.name} · ${clp(income.amount)}", "Ingreso recurrente", onEdit = { editingIncomeId = income.id; showIncomeDialog = true }) {
+                                    deletePlanningKind = "income"; deletePlanningId = income.id
                                 }
                             }
                         } else {
                             Text("Aún no has registrado ingresos. Agrégalos para calcular tu disponible.", color = Muted, fontSize = 12.sp)
                         }
-                        if (activeCommitments.isNotEmpty() || monthExpenses.any { it.installmentCount > 1 }) {
+                        if (planningStore.commitments().isNotEmpty() || expenses.any { it.installmentCount > 1 }) {
                             Spacer(Modifier.height(12.dp))
-                            Text("Compromisos activos", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            activeCommitments.forEach { commitment ->
-                                val installment = if (commitment.hasInstallments) "Cuota ${commitment.currentInstallment}/${commitment.totalInstallments}" else "Recurrente"
-                                PlanningRow("${commitment.name} · ${clp(commitment.amount)}", installment) {
-                                    planningStore.deleteCommitment(commitment.id); planningVersion++
+                            Text("Tus compromisos", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            planningStore.commitments().forEach { commitment ->
+                                val installment = when { !commitment.hasInstallments -> "Recurrente"; commitment.currentNumber < 1 -> "Comienza en ${commitment.firstInstallmentMonth}"; commitment.currentNumber > commitment.totalInstallments -> "Finalizado"; else -> "Cuota ${commitment.currentNumber}/${commitment.totalInstallments}" }
+                                PlanningRow("${commitment.name} · ${clp(commitment.amount)}", installment, onEdit = { editingCommitmentId = commitment.id; showCommitmentDialog = true }) {
+                                    deletePlanningKind = "commitment"; deletePlanningId = commitment.id
                                 }
                             }
-                            monthExpenses.filter { it.installmentCount > 1 }.forEach { expense ->
-                                InstallmentPurchaseRow(expense, expense.monthlyExpense(thisYear, thisMonth), onEdit = { editingEvent = expense })
+                            expenses.filter { it.installmentCount > 1 }.forEach { expense ->
+                                InstallmentPurchaseRow(expense, expense.monthlyExpense(thisYear, thisMonth), onEdit = { editingEventId = expense.id })
                             }
                         } else {
                             Text("Sin compromisos activos. Tu proyección se mantiene en cero.", color = Muted, fontSize = 12.sp)
@@ -531,6 +546,8 @@ class MainActivity : ComponentActivity() {
                                             syncStatus = "Sincronizando…"
                                             firebaseSync.sync(CapturedEventStore(activity).recent(10_000)) { result ->
                                                 syncStatus = result
+                                                captured = CapturedEventStore(activity).recent(10_000)
+                                                planningVersion++
                                                 syncing = false
                                             }
                                         }
@@ -616,10 +633,10 @@ class MainActivity : ComponentActivity() {
                         item { Text("Todavía no hay eventos. Puedes insertar una prueba local o esperar una notificación real.", color = Muted, fontSize = 13.sp) }
                     } else {
                         items(captured) { event ->
-                            CapturedEventRow(event) {
-                                CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                            CapturedEventRow(event, onReview = {
+                                if (!CapturedEventStore(activity).confirmMovement(event.id)) editingEventId = event.id
                                 captured = CapturedEventStore(activity).recent(10_000)
-                            }
+                            }, onEdit = { editingEventId = event.id }, onIgnore = { ignoringEvent = event })
                         }
                     }
                     item { Text("Movimientos reales capturados", color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
@@ -629,10 +646,10 @@ class MainActivity : ComponentActivity() {
                         items(realCaptured) { event ->
                             CapturedExpenseRow(
                                 event = event,
-                                onEditCategory = { editingEvent = event },
+                                onEditCategory = { editingEventId = event.id },
                                 onIgnore = { ignoringEvent = event },
                                 onConfirm = {
-                                    CapturedEventStore(activity).updateStatus(event.id, "confirmed")
+                                    if (!CapturedEventStore(activity).confirmMovement(event.id)) editingEventId = event.id
                                     captured = CapturedEventStore(activity).recent(10_000)
                                 }
                             )
@@ -661,23 +678,35 @@ class MainActivity : ComponentActivity() {
                                 tint = if (selectedTab == tab) Green else Muted
                             )
                         },
-                        label = { Text(label, fontSize = 11.sp) }
+                        label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
             }
             }
             }
+        deletePlanningId?.let { id ->
+            AlertDialog(onDismissRequest = { deletePlanningId = null }, title = { Text("Quitar del plan") },
+                text = { Text("Se quitará este elemento de la planificación. Los movimientos registrados se conservarán.") },
+                confirmButton = { TextButton(onClick = {
+                    if (deletePlanningKind == "income") planningStore.deleteIncome(id) else planningStore.deleteCommitment(id)
+                    planningVersion++; deletePlanningId = null
+                }) { Text("Quitar") } }, dismissButton = { TextButton(onClick = { deletePlanningId = null }) { Text("Cancelar") } })
+        }
         if (showManualDialog) {
-            var manualMerchant by remember { mutableStateOf("") }
-            var manualAmount by remember { mutableStateOf("") }
-            var manualCategory by remember { mutableStateOf("otros") }
-            var manualSource by remember { mutableStateOf("cuenta_corriente") }
+            var manualMerchant by rememberSaveable { mutableStateOf("") }
+            var manualAmount by rememberSaveable { mutableStateOf("") }
+            var manualCategory by rememberSaveable { mutableStateOf("otros") }
+            var manualSource by rememberSaveable { mutableStateOf("cuenta_corriente") }
             var manualError by remember { mutableStateOf<String?>(null) }
+            var manualDate by rememberSaveable { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
+            var manualFinanced by rememberSaveable { mutableStateOf(false) }
+            var manualParts by rememberSaveable { mutableStateOf("2") }
+            var manualFirstMonth by rememberSaveable { mutableStateOf(currentMonthKey()) }
             AlertDialog(
                 onDismissRequest = { showManualDialog = false },
                 title = { Text("Agregar gasto manual") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = manualMerchant,
                             onValueChange = { manualMerchant = it },
@@ -687,9 +716,10 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(
                             value = manualAmount,
                             onValueChange = { manualAmount = it },
-                            label = { Text("Monto en pesos") },
-                            singleLine = true
+                            label = { Text("Monto total en pesos") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true
                         )
+                        TextButton(onClick = { chooseDate(activity, manualDate) { manualDate = it } }) { Text("Fecha: $manualDate · Cambiar") }
                         Text("Medio de pago", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("cuenta_corriente" to "Cuenta corriente", "tarjeta_credito" to "Tarjeta").forEach { (value, label) ->
@@ -702,12 +732,25 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("servicios" to "Servicios", "casa" to "Casa", "supermercado" to "Supermercado", "salidas" to "Salidas", "auto" to "Auto", "otros" to "Otros").forEach { (value, label) ->
+                            BudgetCategories.map { it to categoryLabel(it) }.forEach { (value, label) ->
                                 FilterChip(
                                     selected = manualCategory == value,
                                     onClick = { manualCategory = value },
                                     label = { Text(label) }
                                 )
+                            }
+                        }
+                        if (manualSource == "tarjeta_credito") {
+                            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                                FilterChip(selected = !manualFinanced, onClick = { manualFinanced = false }, label = { Text("Una cuota") })
+                                FilterChip(selected = manualFinanced, onClick = { manualFinanced = true }, label = { Text("En cuotas") })
+                            }
+                            if (manualFinanced) {
+                                OutlinedTextField(manualParts, { manualParts = it }, label = { Text("Número de cuotas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                                OutlinedTextField(manualFirstMonth, { manualFirstMonth = it }, label = { Text("Primer cargo (AAAA-MM)") }, singleLine = true)
+                                val parts = manualParts.toIntOrNull()
+                                val value = parseClpInput(manualAmount)
+                                if (parts != null && parts in 2..120 && value != null && value >= parts) Text("Cuota aproximada: ${clp(value / parts)}. El total no se descuenta completo del mes.", color = Muted, fontSize = 12.sp)
                             }
                         }
                         manualError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
@@ -716,21 +759,26 @@ class MainActivity : ComponentActivity() {
                 confirmButton = {
                     TextButton(onClick = {
                         val amount = parseClpInput(manualAmount)
+                        val date = parseDateInput(manualDate)
+                        val parts = if (manualFinanced && manualSource == "tarjeta_credito") manualParts.toIntOrNull() else 1
                         when {
                             manualMerchant.isBlank() -> manualError = "Escribe una descripción."
                             amount == null || amount <= 0 -> manualError = "Ingresa un monto válido."
+                            date == null -> manualError = "Revisa la fecha."
+                            parts == null || parts !in 1..120 || parts > amount || (parts > 1 && !validMonth(manualFirstMonth)) -> manualError = "Revisa las cuotas y el primer mes de cargo."
                             else -> {
                                 CapturedEventStore(activity).insertManualExpense(
                                     merchant = manualMerchant,
                                     amount = amount,
                                     category = manualCategory,
-                                    paymentSource = manualSource
+                                    paymentSource = manualSource, receivedAt = date,
+                                    installmentCount = parts, firstInstallmentMonth = if (parts > 1) manualFirstMonth else null
                                 )
                                 captured = CapturedEventStore(activity).recent(10_000)
                                 showManualDialog = false
                             }
                         }
-                    }) { Text("Guardar") }
+                    }) { Text("Guardar y confirmar") }
                 },
                 dismissButton = { TextButton(onClick = { showManualDialog = false }) { Text("Cancelar") } }
             )
@@ -795,9 +843,9 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showGoalDialog = false },
                 title = { Text("Meta mensual") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = goalInput, onValueChange = { goalInput = it }, label = { Text("Monto objetivo en pesos") }, singleLine = true)
-                        Text("Puede ser una meta de ahorro, ingreso o saldo disponible. Brújula no la interpretará por ti.", color = Muted, fontSize = 12.sp)
+                        Text("Es la reserva mensual de ahorro. Se resta del disponible para gastar.", color = Muted, fontSize = 12.sp)
                         goalError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
                 },
@@ -819,14 +867,14 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showCategoryLimitDialog = false },
                 title = { Text("Límite por área") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Define cuánto quieres permitir en cada área durante el mes.", color = Muted, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             BudgetCategories.take(5).forEach { category ->
                                 FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             BudgetCategories.drop(5).forEach { category ->
                                 FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category; limitInput = planningStore.categoryLimit(category).toString() }, label = { Text(categoryLabel(category), fontSize = 11.sp) })
                             }
@@ -847,14 +895,15 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (showIncomeDialog) {
-            var name by remember { mutableStateOf("") }
-            var amountInput by remember { mutableStateOf("") }
+            val original = planningStore.incomes().firstOrNull { it.id == editingIncomeId }
+            var name by rememberSaveable(editingIncomeId) { mutableStateOf(original?.name.orEmpty()) }
+            var amountInput by rememberSaveable(editingIncomeId) { mutableStateOf(original?.amount?.toString().orEmpty()) }
             var error by remember { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { showIncomeDialog = false },
-                title = { Text("Agregar ingreso") },
+                title = { Text(if (editingIncomeId == null) "Agregar ingreso" else "Editar ingreso") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre: sueldo, DAP, Integra…") }, singleLine = true)
                         OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto mensual") }, singleLine = true)
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
@@ -864,32 +913,33 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = {
                         val amount = parseClpInput(amountInput)
                         if (name.isBlank() || amount == null || amount <= 0) error = "Completa nombre y monto."
-                        else { planningStore.addIncome(name, amount); planningVersion++; showIncomeDialog = false }
+                        else { planningStore.addIncome(name, amount, id = editingIncomeId); planningVersion++; showIncomeDialog = false }
                     }) { Text("Guardar") }
                 },
                 dismissButton = { TextButton(onClick = { showIncomeDialog = false }) { Text("Cancelar") } }
             )
         }
         if (showCommitmentDialog) {
-            var name by remember { mutableStateOf("") }
-            var amountInput by remember { mutableStateOf("") }
-            var currentInput by remember { mutableStateOf("") }
-            var totalInput by remember { mutableStateOf("") }
-            var category by remember { mutableStateOf("servicios") }
+            val original = planningStore.commitments().firstOrNull { it.id == editingCommitmentId }
+            var name by rememberSaveable(editingCommitmentId) { mutableStateOf(original?.name.orEmpty()) }
+            var amountInput by rememberSaveable(editingCommitmentId) { mutableStateOf(original?.amount?.toString().orEmpty()) }
+            var firstMonthInput by rememberSaveable(editingCommitmentId) { mutableStateOf(original?.firstInstallmentMonth ?: currentMonthKey()) }
+            var totalInput by rememberSaveable(editingCommitmentId) { mutableStateOf(original?.totalInstallments?.takeIf { it > 0 }?.toString().orEmpty()) }
+            var category by rememberSaveable(editingCommitmentId) { mutableStateOf(original?.category ?: "servicios") }
             var error by remember { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { showCommitmentDialog = false },
-                title = { Text("Compromiso o cuota") },
+                title = { Text(if (editingCommitmentId == null) "Compromiso o cuota" else "Editar compromiso") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Ej.: PC, diplomado, mamá") }, singleLine = true)
                         OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Monto de la cuota") }, singleLine = true)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(value = currentInput, onValueChange = { currentInput = it }, label = { Text("Cuota actual") }, singleLine = true, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = totalInput, onValueChange = { totalInput = it }, label = { Text("Total cuotas") }, singleLine = true, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = firstMonthInput, onValueChange = { firstMonthInput = it }, label = { Text("Primer mes (AAAA-MM)") }, singleLine = true)
+                            OutlinedTextField(value = totalInput, onValueChange = { totalInput = it }, label = { Text("Total cuotas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                         }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { value ->
                                 FilterChip(selected = category == value, onClick = { category = value }, label = { Text(value.replaceFirstChar { it.uppercase() }) })
                             }
@@ -901,10 +951,9 @@ class MainActivity : ComponentActivity() {
                 confirmButton = {
                     TextButton(onClick = {
                         val amount = parseClpInput(amountInput)
-                        val current = currentInput.toIntOrNull() ?: 0
-                        val total = totalInput.toIntOrNull() ?: 0
-                        if (name.isBlank() || amount == null || amount <= 0 || current < 0 || total < 0 || (total > 0 && current > total)) error = "Revisa nombre, monto y cuotas."
-                        else { planningStore.addCommitment(name, amount, current, total, category); planningVersion++; showCommitmentDialog = false }
+                        val total = if (totalInput.isBlank()) 0 else totalInput.toIntOrNull()
+                        if (name.isBlank() || amount == null || amount <= 0 || total == null || total !in 0..120 || (total > 0 && !validMonth(firstMonthInput))) error = "Revisa nombre, monto, cuotas y primer mes."
+                        else { planningStore.addCommitment(name, amount, 1, total, category, firstInstallmentMonth = if (total > 0) firstMonthInput else null, id = editingCommitmentId); planningVersion++; showCommitmentDialog = false }
                     }) { Text("Guardar") }
                 },
                 dismissButton = { TextButton(onClick = { showCommitmentDialog = false }) { Text("Cancelar") } }
@@ -912,23 +961,37 @@ class MainActivity : ComponentActivity() {
         }
         editingEvent?.let { event ->
             val history = remember(event.id) { CapturedEventStore(activity).history(event.id) }
-            var merchant by remember(event.id) { mutableStateOf(event.merchant.orEmpty()) }
-            var amount by remember(event.id) { mutableStateOf(event.amount?.toString().orEmpty()) }
-            var date by remember(event.id) { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) }
-            var category by remember(event.id) { mutableStateOf(event.category) }
-            var payment by remember(event.id) { mutableStateOf(event.paymentSource) }
-            var financed by remember(event.id) { mutableStateOf(event.installmentCount > 1) }
-            var installments by remember(event.id) { mutableStateOf(event.installmentCount.coerceAtLeast(2).toString()) }
-            var firstChargeMonth by remember(event.id) { mutableStateOf(event.firstInstallmentMonth ?: SimpleDateFormat("yyyy-MM", Locale.US).format(Date(event.receivedAt))) }
+            var merchant by rememberSaveable(event.id) { mutableStateOf(event.merchant.orEmpty()) }
+            var amount by rememberSaveable(event.id) { mutableStateOf(event.amount?.toString().orEmpty()) }
+            var date by rememberSaveable(event.id) { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) }
+            var category by rememberSaveable(event.id) { mutableStateOf(event.category) }
+            var payment by rememberSaveable(event.id) { mutableStateOf(event.paymentSource) }
+            var financed by rememberSaveable(event.id) { mutableStateOf(event.installmentCount > 1) }
+            var installments by rememberSaveable(event.id) { mutableStateOf(event.installmentCount.coerceAtLeast(2).toString()) }
+            var firstChargeMonth by rememberSaveable(event.id) { mutableStateOf(event.firstInstallmentMonth ?: SimpleDateFormat("yyyy-MM", Locale.US).format(Date(event.receivedAt))) }
             var error by remember(event.id) { mutableStateOf<String?>(null) }
+            fun saveMovement(confirm: Boolean) {
+                    val parsedAmount = parseClpInput(amount)
+                    val parsedDate = if (date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(event.receivedAt))) event.receivedAt else parseDateInput(date)
+                    val count = if (financed && event.movementType == "expense") installments.toIntOrNull() else 1
+                    val validMonth = Regex("[0-9]{4}-(0[1-9]|1[0-2])").matches(firstChargeMonth)
+                    if (merchant.isBlank() || parsedAmount == null || parsedAmount <= 0 || parsedDate == null) error = "Revisa comercio, monto y fecha."
+                    else if (count == null || count !in 1..120 || count > parsedAmount || (count > 1 && (!validMonth || payment != "tarjeta_credito"))) error = "Revisa número de cuotas, primer mes y medio de pago Tarjeta."
+                    else {
+                        CapturedEventStore(activity).updateMovement(event, merchant, parsedAmount, parsedDate, category, payment, count, if (count > 1) firstChargeMonth else null)
+                        if (confirm) CapturedEventStore(activity).confirmMovement(event.id)
+                        captured = CapturedEventStore(activity).recent(10_000)
+                        editingEventId = null
+                    }
+            }
             AlertDialog(
-                onDismissRequest = { editingEvent = null },
+                onDismissRequest = { editingEventId = null },
                 title = { Text("Editar movimiento") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         OutlinedTextField(merchant, { merchant = it }, label = { Text("Comercio") }, singleLine = true)
-                        OutlinedTextField(amount, { amount = it }, label = { Text("Monto en pesos") }, singleLine = true)
-                        OutlinedTextField(date, { date = it }, label = { Text("Fecha (AAAA-MM-DD)") }, singleLine = true)
+                        OutlinedTextField(amount, { amount = it }, label = { Text("Monto total en pesos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                        TextButton(onClick = { chooseDate(activity, date) { date = it } }) { Text("Fecha: $date · Cambiar") }
                         Text("Categoría", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             listOf("alimentacion", "vivienda", "transporte", "salud", "servicios", "ocio", "compras", "otros").forEach { value ->
@@ -937,7 +1000,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("Medio de pago", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            listOf("cuenta_corriente" to "Cuenta", "tarjeta_credito" to "Tarjeta", "manual" to "Manual", "notificacion" to "Otro").forEach { (value, label) ->
+                            listOf("cuenta_corriente" to "Cuenta corriente", "tarjeta_credito" to "Tarjeta").forEach { (value, label) ->
                                 FilterChip(payment == value, { payment = value }, label = { Text(label) })
                             }
                         }
@@ -962,20 +1025,11 @@ class MainActivity : ComponentActivity() {
                         history.take(4).forEach { change -> Text("${change.field}: ${change.oldValue ?: "—"} → ${change.newValue ?: "—"}", color = Muted, fontSize = 10.sp) }
                     }
                 },
-                confirmButton = { TextButton(onClick = {
-                    val parsedAmount = parseClpInput(amount)
-                    val parsedDate = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(date)?.time }.getOrNull()
-                    val count = if (financed && event.movementType == "expense") installments.toIntOrNull() else 1
-                    val validMonth = Regex("[0-9]{4}-(0[1-9]|1[0-2])").matches(firstChargeMonth)
-                    if (merchant.isBlank() || parsedAmount == null || parsedAmount <= 0 || parsedDate == null) error = "Revisa comercio, monto y fecha."
-                    else if (count == null || count !in 1..120 || count > parsedAmount || (count > 1 && (!validMonth || payment != "tarjeta_credito"))) error = "Revisa número de cuotas, primer mes y medio de pago Tarjeta."
-                    else {
-                        CapturedEventStore(activity).updateMovement(event, merchant, parsedAmount, parsedDate, category, payment, count, if (count > 1) firstChargeMonth else null)
-                        captured = CapturedEventStore(activity).recent(10_000)
-                        editingEvent = null
-                    }
-                }) { Text("Guardar") } },
-                dismissButton = { TextButton(onClick = { editingEvent = null }) { Text("Cancelar") } }
+                confirmButton = { TextButton(onClick = { saveMovement(event.isPending) }) { Text(if (event.isPending) "Guardar y confirmar" else "Guardar cambios") } },
+                dismissButton = { Row {
+                    if (event.isPending) TextButton(onClick = { saveMovement(false) }) { Text("Guardar pendiente") }
+                    TextButton(onClick = { editingEventId = null }) { Text("Cancelar") }
+                } }
             )
         }
         ignoringEvent?.let { event ->
@@ -989,14 +1043,14 @@ class MainActivity : ComponentActivity() {
 
 }
 
-@Composable private fun PlanningRow(title: String, subtitle: String, onDelete: () -> Unit) {
+@Composable private fun PlanningRow(title: String, subtitle: String, onEdit: (() -> Unit)? = null, onDelete: () -> Unit) {
     Card(shape = RoundedCornerShape(13.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, color = Muted, fontSize = 12.sp)
             }
-            TextButton(onClick = onDelete) { Text("Quitar") }
+            Column { onEdit?.let { TextButton(onClick = it) { Text("Editar") } }; TextButton(onClick = onDelete) { Text("Quitar") } }
         }
     }
 }
@@ -1073,7 +1127,7 @@ class MainActivity : ComponentActivity() {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CalendarInsight("Promedio diario", clp(average), Icons.Filled.BarChart, Modifier.weight(1f))
-                CalendarInsight("Día más caro", mostExpensive?.let { "${it.key} oct · ${clp(it.value)}" } ?: "Sin gastos", Icons.Filled.Warning, Modifier.weight(1f))
+                CalendarInsight("Día más caro", mostExpensive?.let { "${it.key} ${monthLabel.substringBefore(" ")} · ${clp(it.value)}" } ?: "Sin gastos", Icons.Filled.Warning, Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf("Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do").forEach { day -> Text(day, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)) }
@@ -1161,14 +1215,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int) {
+@Composable private fun SummaryHeroCard(available: Int, spent: Int, income: Int, reserved: Int, pendingCount: Int) {
     val today = Calendar.getInstance()
     val remainingDays = today.getActualMaximum(Calendar.DAY_OF_MONTH) - today.get(Calendar.DAY_OF_MONTH)
     GradientHero {
         Text("DISPONIBLE ESTE MES", color = Mint, fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
-        Text(if (income > 0) clp(available) else "Configura tu plan", color = if (available < 0 && income > 0) Lavender else Paper,
+        Text(if (income > 0) clp(available) else "Configura tu plan", modifier = Modifier.testTag("available-amount"), color = if (available < 0 && income > 0) Lavender else Paper,
             fontSize = if (income > 0) 40.sp else 29.sp, lineHeight = 48.sp, fontFamily = FontFamily.Serif)
-        Text(if (income > 0) "Después de compromisos y ahorro" else "Agrega ingresos y compromisos en Planificación.", color = Mint, fontSize = 12.sp)
+        Text(if (income > 0) "Después de gastos, reservas pendientes, compromisos y ahorro" else "Agrega ingresos y compromisos en Planificación.", color = Mint, fontSize = 12.sp)
+        if (pendingCount > 0) Text("Reserva pendiente del mes: ${clp(reserved)} · $pendingCount por revisar", color = Ochre, fontSize = 12.sp)
         HorizontalDivider(color = Mint.copy(alpha = .25f))
         Text(if (income > 0 && remainingDays > 0) "${clp(available.coerceAtLeast(0) / remainingDays)} por día · $remainingDays días restantes"
             else if (income > 0) "Cierre del mes · Gasto ${clp(spent)}" else "Tus gastos siguen registrándose con normalidad.", color = Paper, fontSize = 12.sp)
@@ -1318,8 +1373,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun SummaryMovementRow(event: CapturedEvent) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+@Composable private fun SummaryMovementRow(event: CapturedEvent, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onEdit).padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Card(shape = RoundedCornerShape(50), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4F0))) {
             Icon(
                 imageVector = when (event.category) { "supermercado" -> Icons.Filled.ShoppingCart; "auto" -> Icons.Filled.DirectionsCar; "suscripciones" -> Icons.Filled.PlayArrow; else -> Icons.Filled.Description },
@@ -1330,7 +1385,7 @@ class MainActivity : ComponentActivity() {
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(event.merchant ?: "Movimiento", color = Ink, fontWeight = FontWeight.SemiBold)
-            Text(if (event.installmentCount > 1) "${event.categoryLabel()} · cuota de ${event.installmentCount} · compra ${clp(event.amount ?: 0)}" else "${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
+            Text("${if (event.isPending) "Pendiente · " else ""}" + if (event.installmentCount > 1) "${event.categoryLabel()} · cuota de ${event.installmentCount} · compra ${clp(event.amount ?: 0)}" else "${event.categoryLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
         }
         val target = Calendar.getInstance()
         Text(clp(event.monthlyExpense(target.get(Calendar.YEAR), target.get(Calendar.MONTH))), color = Ink, fontWeight = FontWeight.Bold)
@@ -1338,7 +1393,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun CapturedEventRow(event: CapturedEvent, onReview: () -> Unit = {}, onEdit: (() -> Unit)? = null, onIgnore: (() -> Unit)? = null) {
-    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(modifier = if (onEdit != null) Modifier.clickable(role = Role.Button, onClick = onEdit) else Modifier,
+        shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Card(shape = RoundedCornerShape(50), colors = CardDefaults.cardColors(containerColor = if (event.status == "requires_review") Color(0xFFFFF0D6) else Mint)) {
@@ -1368,14 +1424,15 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun CapturedExpenseRow(event: CapturedEvent, onEditCategory: () -> Unit, onIgnore: () -> Unit, onConfirm: () -> Unit) {
-    Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(modifier = Modifier.clickable(role = Role.Button, onClick = onEditCategory), shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("PENDIENTE DE CONFIRMACIÓN", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Text(event.merchant ?: "Comercio pendiente", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Text(clp(event.amount ?: 0), color = Green, fontFamily = FontFamily.Serif, fontSize = 23.sp)
             Text("${event.categoryLabel()} · ${event.movementTypeLabel()} · ${event.paymentSourceLabel()} · ${event.receivedAtShortLabel()}", color = Muted, fontSize = 12.sp)
             if (event.installmentCount > 1) Text("${event.installmentCount} cuotas · desde ${event.firstInstallmentMonth ?: "por confirmar"}", color = Muted, fontSize = 12.sp)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                if (event.status == "captured") TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
+                if (event.isPending) TextButton(onClick = onConfirm) { Text("Confirmar movimiento") }
                 TextButton(onClick = onEditCategory) { Text("Editar") }
                 TextButton(onClick = onIgnore) { Text("Ignorar") }
             }
@@ -1574,8 +1631,7 @@ private fun CapturedEvent.paymentSourceLabel() = when (paymentSource) {
     else -> "NOTIFICACION"
 }
 
-private fun parseClpInput(value: String): Int? =
-    value.trim().replace(".", "").replace(",", ".").toDoubleOrNull()?.toInt()
+
 
 private fun CapturedEvent.categoryLabel() = when (category) {
     "servicios" -> "SERVICIOS"

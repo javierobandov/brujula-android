@@ -19,11 +19,20 @@ data class Commitment(
     val currentInstallment: Int = 0,
     val totalInstallments: Int = 0,
     val category: String = "servicios",
-    val recurring: Boolean = true
+    val recurring: Boolean = true,
+    val firstInstallmentMonth: String? = null
 ) {
     val hasInstallments: Boolean get() = totalInstallments > 0
-    val remainingInstallments: Int get() = (totalInstallments - currentInstallment).coerceAtLeast(0)
-    val isActive: Boolean get() = !hasInstallments || remainingInstallments > 0
+    val currentNumber: Int get() {
+        val now = java.util.Calendar.getInstance()
+        return firstInstallmentMonth?.let { installmentNumber(it, now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH)) }
+            ?: currentInstallment.coerceAtLeast(1)
+    }
+    val remainingInstallments: Int get() = (totalInstallments - currentNumber.coerceAtLeast(1) + 1).coerceAtLeast(0)
+    val isActive: Boolean get() = !hasInstallments || currentNumber in 1..totalInstallments
+    fun chargeAt(year: Int, month: Int): Int = if (!hasInstallments || firstInstallmentMonth?.let {
+        installmentNumber(it, year, month) in 1..totalInstallments
+    } == true) amount else 0
 }
 
 data class MonthlyProjection(val label: String, val commitmentTotal: Int, val activeCommitments: Int)
@@ -43,16 +52,22 @@ class PlanningStore(context: Context) {
         )
     }
 
-    fun commitments(): List<Commitment> = readArray("commitments") { item ->
-        Commitment(
-            id = item.optString("id"),
-            name = item.optString("name"),
-            amount = item.optInt("amount"),
-            currentInstallment = item.optInt("current_installment"),
-            totalInstallments = item.optInt("total_installments"),
-            category = item.optString("category", "servicios"),
-            recurring = item.optBoolean("recurring", true)
-        )
+    fun commitments(): List<Commitment> {
+        var migrated = false
+        val result = readArray("commitments") { item ->
+            val total = item.optInt("total_installments")
+            val current = item.optInt("current_installment").coerceAtLeast(1)
+            var first = item.optString("first_installment_month").takeIf(::validMonth)
+            if (total > 0 && first == null) {
+                val date = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -(current - 1)) }
+                first = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US).format(date.time)
+                migrated = true
+            }
+            Commitment(item.optString("id"), item.optString("name"), item.optInt("amount"), current, total,
+                item.optString("category", "servicios"), item.optBoolean("recurring", true), first)
+        }
+        if (migrated) writeArray("commitments", JSONArray().apply { result.forEach { put(it.toJson()) } })
+        return result
     }
 
     fun monthlyGoal(): Int = prefs.getInt("monthly_goal", 0)
@@ -76,7 +91,7 @@ class PlanningStore(context: Context) {
             val monthCalendar = calendar.clone() as java.util.Calendar
             monthCalendar.add(java.util.Calendar.MONTH, offset)
             val active = commitments().filter { commitment ->
-                !commitment.hasInstallments || commitment.currentInstallment + offset < commitment.totalInstallments
+                commitment.chargeAt(monthCalendar.get(java.util.Calendar.YEAR), monthCalendar.get(java.util.Calendar.MONTH)) > 0
             }
             MonthlyProjection(
                 label = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale("es", "CL")).format(monthCalendar.time),
@@ -86,9 +101,9 @@ class PlanningStore(context: Context) {
         }
     }
 
-    fun addIncome(name: String, amount: Int, recurring: Boolean = true) {
-        val values = incomes().toMutableList()
-        values += PlannedIncome(UUID.randomUUID().toString(), name.trim(), amount, recurring)
+    fun addIncome(name: String, amount: Int, recurring: Boolean = true, id: String? = null) {
+        val values = incomes().filterNot { it.id == id }.toMutableList()
+        values += PlannedIncome(id ?: UUID.randomUUID().toString(), name.trim(), amount, recurring)
         writeArray("incomes", JSONArray().apply { values.forEach { put(it.toJson()) } })
     }
 
@@ -98,10 +113,16 @@ class PlanningStore(context: Context) {
         currentInstallment: Int,
         totalInstallments: Int,
         category: String,
-        recurring: Boolean = true
+        recurring: Boolean = true,
+        firstInstallmentMonth: String? = null,
+        id: String? = null
     ) {
-        val values = commitments().toMutableList()
-        values += Commitment(UUID.randomUUID().toString(), name.trim(), amount, currentInstallment, totalInstallments, category, recurring)
+        val values = commitments().filterNot { it.id == id }.toMutableList()
+        val first = firstInstallmentMonth ?: if (totalInstallments > 0) {
+            val date = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -(currentInstallment.coerceAtLeast(1) - 1)) }
+            java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US).format(date.time)
+        } else null
+        values += Commitment(id ?: UUID.randomUUID().toString(), name.trim(), amount, currentInstallment, totalInstallments, category, recurring, first)
         writeArray("commitments", JSONArray().apply { values.forEach { put(it.toJson()) } })
     }
 
@@ -137,7 +158,7 @@ class PlanningStore(context: Context) {
         }
         for (index in 0 until commitmentsArray.length()) {
             val item = commitmentsArray.optJSONObject(index) ?: continue
-            val value = Commitment(item.optString("id"), item.optString("name"), item.optInt("amount"), item.optInt("current_installment"), item.optInt("total_installments"), item.optString("category", "servicios"), item.optBoolean("recurring", true))
+            val value = Commitment(item.optString("id"), item.optString("name"), item.optInt("amount"), item.optInt("current_installment"), item.optInt("total_installments"), item.optString("category", "servicios"), item.optBoolean("recurring", true), item.optString("first_installment_month").takeIf(::validMonth))
             if (value.id.isNotBlank() && value.id !in existingCommitmentIds) { newCommitments += value; imported++ }
         }
         if (root.has("monthly_goal") && monthlyGoal() == 0) setMonthlyGoal(root.optInt("monthly_goal"))
@@ -166,7 +187,7 @@ class PlanningStore(context: Context) {
         "incomes" to incomes().map { mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "recurring" to it.recurring) },
         "commitments" to commitments().map {
             mapOf("id" to it.id, "name" to it.name, "amount" to it.amount, "current_installment" to it.currentInstallment,
-                "total_installments" to it.totalInstallments, "category" to it.category, "recurring" to it.recurring)
+                "total_installments" to it.totalInstallments, "category" to it.category, "recurring" to it.recurring, "first_installment_month" to (it.firstInstallmentMonth ?: ""))
         }
     )
 
@@ -208,6 +229,6 @@ class PlanningStore(context: Context) {
     private fun Commitment.toJson() = JSONObject().apply {
         put("id", id); put("name", name); put("amount", amount)
         put("current_installment", currentInstallment); put("total_installments", totalInstallments)
-        put("category", category); put("recurring", recurring)
+        put("category", category); put("recurring", recurring); put("first_installment_month", firstInstallmentMonth)
     }
 }

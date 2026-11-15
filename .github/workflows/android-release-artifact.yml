@@ -3,7 +3,7 @@ name: Android signed release artifact
 on:
   push:
     branches:
-      - feat/brujula-visual-02
+      - feat/brujula-interactions-033
     paths:
       - .github/workflows/android-release-artifact.yml
       - "android/**"
@@ -54,7 +54,7 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$signing_file"
           chmod 600 "$signing_file"
           test -s "$signing_file"
-          ./gradlew --no-daemon assembleRelease -PversionCode=56 -PversionName=0.32.0
+          ./gradlew --no-daemon assembleRelease -PversionCode=57 -PversionName=0.33.0
           apk="app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose "$apk"
           "$ANDROID_HOME/build-tools/35.0.1/aapt" dump badging "$apk" | sed -n '1p'
@@ -63,7 +63,7 @@ jobs:
       - name: Upload private build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: brujula-release-v0.32.0-code-56
+          name: brujula-release-v0.33.0-code-57
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
