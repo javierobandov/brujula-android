@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -677,7 +678,7 @@ class MainActivity : ComponentActivity() {
                                 tint = if (selectedTab == tab) Green else Muted
                             )
                         },
-                        label = { Text(label, fontSize = 11.sp) }
+                        label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     )
                 }
             }
